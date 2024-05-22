@@ -134,9 +134,7 @@ gclue_service_agent_class_init (GClueServiceAgentClass *klass)
 static void
 gclue_service_agent_init (GClueServiceAgent *agent)
 {
-        agent->priv = G_TYPE_INSTANCE_GET_PRIVATE (agent,
-                                                   GCLUE_TYPE_SERVICE_AGENT,
-                                                   GClueServiceAgentPrivate);
+        agent->priv = gclue_service_agent_get_instance_private (agent);
 }
 
 static void
@@ -194,16 +192,15 @@ on_manager_proxy_ready (GObject      *source_object,
                         gpointer      user_data)
 {
         GClueServiceAgent *agent;
-        GError *error = NULL;
-        agent = GCLUE_SERVICE_AGENT (user_data);
+        g_autoptr(GError) error = NULL;
 
+        agent = GCLUE_SERVICE_AGENT (user_data);
         agent->priv->manager_proxy = g_dbus_proxy_new_for_bus_finish (res,
                                                                       &error);
         if (agent->priv->manager_proxy == NULL) {
                 g_critical ("Failed to create proxy to %s: %s",
                             MANAGER_PATH,
                             error->message);
-                g_error_free (error);
                 return;
         }
 
@@ -337,10 +334,10 @@ gclue_service_agent_handle_authorize_app (GClueAgent            *agent,
         NotifyNotification *notification;
         NotificationData *data;
         GError *error = NULL;
-        char *desktop_file;
+        g_autofree char *desktop_file = NULL;
         GDesktopAppInfo *app_info;
-        char *msg;
-        const char *reason;
+        g_autofree char *msg = NULL;
+        g_autofree char *reason = NULL;
 
         desktop_file = g_strjoin (".", desktop_id, "desktop", NULL);
         app_info = g_desktop_app_info_new (desktop_file);
@@ -353,18 +350,17 @@ gclue_service_agent_handle_authorize_app (GClueAgent            *agent,
 
                 return TRUE;
         }
-        g_free (desktop_file);
 
         msg = g_strdup_printf (_("Allow '%s' to access your location information?"),
                                g_app_info_get_display_name (G_APP_INFO (app_info)));
         reason = g_desktop_app_info_get_string (app_info, "X-Geoclue-Reason");
         if (reason != NULL) {
-                char *tmp = msg;
-                msg = g_strdup_printf ("%s\n\n%s", msg, reason);
-                g_free (tmp);
+                char *tmp = g_strdup_printf ("%s\n\n%s", msg, reason);
+
+                g_clear_pointer (&msg, g_free);
+                msg = tmp;
         }
         notification = notify_notification_new (_("Geolocation"), msg, "dialog-question");
-        g_free (msg);
 
         data = g_slice_new0 (NotificationData);
         data->invocation = invocation;

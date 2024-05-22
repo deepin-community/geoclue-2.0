@@ -1,7 +1,5 @@
 /* vim: set et ts=8 sw=8: */
 /*
- * Copyright 2014 Red Hat, Inc.
- *
  * Geoclue is free software; you can redistribute it and/or modify it under
  * the terms of the GNU General Public License as published by the Free
  * Software Foundation; either version 2 of the License, or (at your option)
@@ -16,35 +14,48 @@
  * with Geoclue; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *
- * Authors: Zeeshan Ali (Khattak) <zeeshanak@gnome.org>
  */
 
-#ifndef GCLUE_3G_TOWER_H
-#define GCLUE_3G_TOWER_H
+#ifndef GCLUE_UTILS_H
+#define GCLUE_UTILS_H
+
+#include <glib.h>
+#include <string.h>
 
 G_BEGIN_DECLS
 
-typedef enum {
-  GCLUE_TOWER_TEC_UNKNOWN = 0,
-  GCLUE_TOWER_TEC_2G = 1,
-  GCLUE_TOWER_TEC_3G = 2,
-  GCLUE_TOWER_TEC_4G = 3,
-  GCLUE_TOWER_TEC_NO_FIX = 99,
-} GClueTowerTec;
-# define GCLUE_TOWER_TEC_MAX_VALID GCLUE_TOWER_TEC_4G
+#ifndef strnpbrk
+inline static const char *
+strnpbrk (const char *s, const char *accept, size_t n)
+{
+        const char *end;
 
-typedef struct _GClue3GTower GClue3GTower;
+        for (end = s + n; s < end && *s != '\0'; s++) {
+                if (strchr (accept, *s)) {
+                        return s;
+                }
+        }
 
-#define GCLUE_3G_TOWER_OPERATOR_CODE_STR_LEN 6
-#define GCLUE_3G_TOWER_COUNTRY_CODE_STR_LEN 3
+        return NULL;
+}
+#endif
 
-struct _GClue3GTower {
-        gchar   opc[GCLUE_3G_TOWER_OPERATOR_CODE_STR_LEN + 1];
-        gulong  lac;
-        gulong  cell_id;
-        GClueTowerTec tec;
-};
+#ifndef strnspn
+inline static size_t
+strnspn (const char *s, const char *accept, size_t n)
+{
+        const char *cur, *end;
+
+        for (cur = s, end = s + n; cur < end && *cur != '\0'; cur++) {
+                if (!strchr (accept, *cur)) {
+                        break;
+                }
+        }
+
+        return cur - s;
+}
+#endif
 
 G_END_DECLS
 
-#endif /* GCLUE_3G_TOWER_H */
+#endif /* GCLUE_UTILS_H */

@@ -1,4 +1,4 @@
-project('geoclue', 'c', version: '2.5.7', meson_version : '>= 0.47.2')
+project('geoclue', 'c', version: '2.7.1', meson_version : '>= 0.60.0')
 
 gclue_version = meson.project_version()
 ver_arr = gclue_version.split('.')
@@ -27,13 +27,15 @@ conf.set_quoted('PACKAGE_TARNAME', 'geoclue')
 conf.set_quoted('PACKAGE_STRING', 'geoclue ' + gclue_version)
 conf.set_quoted('PACKAGE_URL', 'https://gitlab.freedesktop.org/geoclue/geoclue/wikis/home')
 conf.set_quoted('PACKAGE_BUGREPORT', 'https://gitlab.freedesktop.org/geoclue/geoclue/issues/new')
-conf.set_quoted('TEST_SRCDIR', meson.source_root() + '/data/')
+conf.set_quoted('TEST_SRCDIR', meson.project_source_root() + '/data/')
 conf.set_quoted('LOCALEDIR', localedir)
 conf.set_quoted('SYSCONFDIR', sysconfdir)
+conf.set_quoted('MOZILLA_API_KEY', get_option('mozilla-api-key'))
 conf.set10('GCLUE_USE_3G_SOURCE', get_option('3g-source'))
 conf.set10('GCLUE_USE_CDMA_SOURCE', get_option('cdma-source'))
 conf.set10('GCLUE_USE_MODEM_GPS_SOURCE', get_option('modem-gps-source'))
 conf.set10('GCLUE_USE_NMEA_SOURCE', get_option('nmea-source'))
+conf.set10('GCLUE_USE_COMPASS', get_option('compass'))
 
 configure_file(output: 'config.h', configuration : conf)
 configinc = include_directories('.')
@@ -41,9 +43,9 @@ configinc = include_directories('.')
 gnome = import('gnome')
 cc = meson.get_compiler('c')
 
-base_deps = [ dependency('glib-2.0', version: '>= 2.44.0'),
-              dependency('gio-2.0', version: '>= 2.44.0'),
-              dependency('gio-unix-2.0', version: '>= 2.44.0') ]
+base_deps = [ dependency('glib-2.0', version: '>= 2.68.0'),
+              dependency('gio-2.0', version: '>= 2.68.0'),
+              dependency('gio-unix-2.0', version: '>= 2.68.0') ]
 libm = cc.find_library('m', required: false)
 if libm.found()
     base_deps += [ libm ]
@@ -91,6 +93,7 @@ summary = '''
         CDMA source:              @8@
         Modem GPS source:         @9@
         Network NMEA source:      @10@
+        Compass:                  @11@
 '''.format(gclue_version,
            get_option('prefix'),
            cc.get_id(),
@@ -101,5 +104,6 @@ summary = '''
            get_option('3g-source'),
            get_option('cdma-source'),
            get_option('modem-gps-source'),
-           get_option('nmea-source'))
+           get_option('nmea-source'),
+           get_option('compass'))
 message(summary)

@@ -4,10 +4,10 @@
   is already included in your distro/OS, you should be able to use the
   package manager's command to install all build depedndancies.
 
-  * gio (>= 2.44.0)
+  * gio
   * gobject-introspection
   * json-glib
-  * libsoup2.4 (>= 2.42)
+  * libsoup3.0
   * pkg-config
 
   Fedora:

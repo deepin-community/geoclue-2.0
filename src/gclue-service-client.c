@@ -49,6 +49,7 @@ struct _GClueServiceClientPrivate
 
         GClueServiceLocation *location;
         GClueServiceLocation *prev_location;
+        GClueLocation *signaled_location;
         guint distance_threshold;
         guint time_threshold;
 
@@ -85,13 +86,13 @@ static char *
 next_location_path (GClueServiceClient *client)
 {
         GClueServiceClientPrivate *priv = client->priv;
-        char *path, *index_str;
+        g_autofree char *index_str = NULL;
+        g_autofree char *path = NULL;
 
         index_str = g_strdup_printf ("%u", (priv->locations_updated)++),
         path = g_strjoin ("/", priv->path, "Location", index_str, NULL);
-        g_free (index_str);
 
-        return path;
+        return g_steal_pointer (&path);
 }
 
 /* We don't use the gdbus-codegen provided gclue_client_emit_location_updated()
@@ -124,24 +125,22 @@ distance_below_threshold (GClueServiceClient *client,
                           GClueLocation      *location)
 {
         GClueServiceClientPrivate *priv = client->priv;
-        GClueLocation *cur_location;
         gdouble distance;
-        gdouble threshold_km;
+        gdouble threshold;
 
         if (priv->distance_threshold == 0)
                 return FALSE;
 
-        g_object_get (priv->location,
-                      "location", &cur_location,
-                      NULL);
-        distance = gclue_location_get_distance_from (cur_location, location);
-        g_object_unref (cur_location);
+        if (!priv->signaled_location)
+                return FALSE;
 
-        threshold_km = priv->distance_threshold / 1000.0;
-        if (distance < threshold_km) {
-                g_debug ("Distance from previous location is %f km and "
-                         "below threshold of %f km.",
-                         distance, threshold_km); 
+        distance = gclue_location_get_distance_from (priv->signaled_location,
+                                                     location);
+        threshold = priv->distance_threshold;
+        if (distance < threshold) {
+                g_debug ("Distance from previous location is %f m and "
+                         "below threshold of %f m.",
+                         distance, threshold);
                 return TRUE;
         }
 
@@ -153,22 +152,18 @@ time_below_threshold (GClueServiceClient *client,
                       GClueLocation      *location)
 {
         GClueServiceClientPrivate *priv = client->priv;
-        GClueLocation *cur_location;
-        gint64 cur_ts, ts;
+        gint64 cur_ts, new_ts;
         guint64 diff_ts;
 
         if (priv->time_threshold == 0)
                 return FALSE;
 
-        g_object_get (priv->location,
-                      "location", &cur_location,
-                      NULL);
+        if (!priv->signaled_location)
+                return FALSE;
 
-        cur_ts = gclue_location_get_timestamp (cur_location);
-        ts = gclue_location_get_timestamp (location);
-        diff_ts = ABS (ts - cur_ts);
-
-        g_object_unref (cur_location);
+        cur_ts = gclue_location_get_timestamp (priv->signaled_location);
+        new_ts = gclue_location_get_timestamp (location);
+        diff_ts = ABS (new_ts - cur_ts);
 
         if (diff_ts < priv->time_threshold) {
                 g_debug ("Time difference between previous and new location"
@@ -205,19 +200,19 @@ on_locator_location_changed (GObject    *gobject,
         GClueServiceClient *client = GCLUE_SERVICE_CLIENT (user_data);
         GClueServiceClientPrivate *priv = client->priv;
         GClueLocationSource *locator = GCLUE_LOCATION_SOURCE (gobject);
-        GClueLocation *location_info;
-        char *path = NULL;
+        GClueLocation *new_location;
+        g_autofree char *path = NULL;
         const char *prev_path;
-        GError *error = NULL;
+        g_autoptr(GError) error = NULL;
 
-        location_info = gclue_location_source_get_location (locator);
-        if (location_info == NULL)
+        new_location = gclue_location_source_get_location (locator);
+        if (new_location == NULL)
                 return; /* No location found yet */
 
-        if (priv->location != NULL && below_threshold (client, location_info)) {
+        if (priv->location != NULL && below_threshold (client, new_location)) {
                 g_debug ("Updating location, below threshold");
                 g_object_set (priv->location,
-                              "location", location_info,
+                              "location", new_location,
                               NULL);
                 return;
         }
@@ -232,7 +227,7 @@ on_locator_location_changed (GObject    *gobject,
         priv->location = gclue_service_location_new (priv->client_info,
                                                      path,
                                                      priv->connection,
-                                                     location_info,
+                                                     new_location,
                                                      &error);
         if (priv->location == NULL)
                 goto error_out;
@@ -244,15 +239,16 @@ on_locator_location_changed (GObject    *gobject,
 
         gclue_dbus_client_set_location (GCLUE_DBUS_CLIENT (client), path);
 
+        g_clear_object (&priv->signaled_location);
+        priv->signaled_location = g_object_ref (new_location);
+
         if (!emit_location_updated (client, prev_path, path, &error))
                 goto error_out;
-        goto out;
+
+        return;
 
 error_out:
         g_warning ("Failed to update location info: %s", error->message);
-        g_error_free (error);
-out:
-        g_free (path);
 }
 
 static void
@@ -262,11 +258,11 @@ start_client (GClueServiceClient *client, GClueAccuracyLevel accuracy_level)
 
         gclue_dbus_client_set_active (GCLUE_DBUS_CLIENT (client), TRUE);
         priv->locator = gclue_locator_new (accuracy_level);
-        gclue_locator_set_time_threshold (priv->locator, 0);
-        g_signal_connect (priv->locator,
-                          "notify::location",
-                          G_CALLBACK (on_locator_location_changed),
-                          client);
+        gclue_locator_set_time_threshold (priv->locator, priv->time_threshold);
+        g_signal_connect_object (priv->locator,
+                                 "notify::location",
+                                 G_CALLBACK (on_locator_location_changed),
+                                 client, 0);
 
         gclue_location_source_start (GCLUE_LOCATION_SOURCE (priv->locator));
 }
@@ -330,7 +326,6 @@ on_agent_props_changed (GDBusProxy *agent_proxy,
         while (g_variant_iter_loop (iter, "{&sv}", &key, &value)) {
                 GClueAccuracyLevel max_accuracy;
                 const char *id;
-                gboolean system_app;
 
                 if (strcmp (key, "MaxAccuracyLevel") != 0)
                         continue;
@@ -338,8 +333,6 @@ on_agent_props_changed (GDBusProxy *agent_proxy,
                 gdbus_client = GCLUE_DBUS_CLIENT (client);
                 id = gclue_dbus_client_get_desktop_id (gdbus_client);
                 max_accuracy = g_variant_get_uint32 (value);
-                system_app = (gclue_client_info_get_xdg_id
-                              (client->priv->client_info) == NULL);
                 /* FIXME: We should be handling all values of max accuracy
                  *        level here, not just 0 and non-0.
                  */
@@ -354,16 +347,16 @@ on_agent_props_changed (GDBusProxy *agent_proxy,
                         start_client (client, accuracy);
                         g_debug ("Re-started '%s'.", id);
                 } else if (max_accuracy == 0 &&
-                           gclue_dbus_client_get_active (gdbus_client) &&
-                           !system_app) {
+                           gclue_dbus_client_get_active (gdbus_client)) {
                         stop_client (client);
                         client->priv->agent_stopped = TRUE;
                         g_debug ("Stopped '%s'.", id);
                 }
 
+                g_variant_unref (value);
+                g_variant_iter_free (iter);
                 break;
         }
-        g_variant_iter_free (iter);
 }
 
 struct _StartData
@@ -379,7 +372,7 @@ start_data_free (StartData *data)
 {
         g_object_unref (data->client);
         g_object_unref (data->invocation);
-        g_free(data->desktop_id);
+        g_free (data->desktop_id);
         g_slice_free (StartData, data);
 }
 
@@ -657,6 +650,7 @@ gclue_service_client_finalize (GObject *object)
         g_clear_object (&priv->locator);
         g_clear_object (&priv->location);
         g_clear_object (&priv->prev_location);
+        g_clear_object (&priv->signaled_location);
         g_clear_object (&priv->client_info);
 
         /* Chain up to the parent class */
@@ -837,8 +831,9 @@ gclue_service_client_handle_set_property (GDBusConnection *connection,
         } else if (ret && strcmp (property_name, "TimeThreshold") == 0) {
                 priv->time_threshold = gclue_dbus_client_get_time_threshold
                         (client);
-                gclue_locator_set_time_threshold (priv->locator,
-                                                  priv->time_threshold);
+                if (GCLUE_IS_LOCATOR (priv->locator))
+                        gclue_locator_set_time_threshold (priv->locator,
+                                                          priv->time_threshold);
                 g_debug ("%s: New time-threshold:  %u",
                          G_OBJECT_TYPE_NAME (client),
                          priv->time_threshold);
@@ -947,9 +942,7 @@ gclue_service_client_initable_iface_init (GInitableIface *iface)
 static void
 gclue_service_client_init (GClueServiceClient *client)
 {
-        client->priv = G_TYPE_INSTANCE_GET_PRIVATE (client,
-                                                    GCLUE_TYPE_SERVICE_CLIENT,
-                                                    GClueServiceClientPrivate);
+        client->priv = gclue_service_client_get_instance_private (client);
         gclue_dbus_client_set_requested_accuracy_level
                 (GCLUE_DBUS_CLIENT (client), DEFAULT_ACCURACY_LEVEL);
 }

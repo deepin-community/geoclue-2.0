@@ -1,10 +1,9 @@
 geoclue_deps = base_deps + [ dependency('json-glib-1.0', version: '>= 0.14.0'),
-                             dependency('libsoup-2.4', version: '>= 2.42.0') ]
+                             dependency('libsoup-3.0', version: '>= 3.0.0') ]
 
 sources = [ libgeoclue_public_api_gen_sources[1],
             geoclue_iface_sources,
-            wpa_supplicant_sources,
-            compass_iface_sources ]
+            wpa_supplicant_sources ]
 
 sources += gnome.genmarshal('gclue-marshal',
                             prefix: 'gclue_marshal',
@@ -17,22 +16,24 @@ include_dirs = [ configinc,
 sources += [ 'gclue-main.c',
              'gclue-3g-tower.h',
              'gclue-client-info.h', 'gclue-client-info.c',
-             'gclue-compass.h', 'gclue-compass.c',
              'gclue-config.h', 'gclue-config.c',
              'gclue-error.h', 'gclue-error.c',
              'gclue-location-source.h', 'gclue-location-source.c',
              'gclue-locator.h', 'gclue-locator.c',
+             'gclue-nmea-utils.h', 'gclue-nmea-utils.c',
              'gclue-service-manager.h', 'gclue-service-manager.c',
              'gclue-service-client.h', 'gclue-service-client.c',
              'gclue-service-location.h', 'gclue-service-location.c',
+             'gclue-static-source.c', 'gclue-static-source.h',
              'gclue-web-source.c', 'gclue-web-source.h',
              'gclue-wifi.h', 'gclue-wifi.c',
              'gclue-mozilla.h', 'gclue-mozilla.c',
              'gclue-min-uint.h', 'gclue-min-uint.c',
-             'gclue-location.h', 'gclue-location.c' ]
+             'gclue-location.h', 'gclue-location.c',
+             'gclue-utils.h' ]
 
 if get_option('3g-source') or get_option('cdma-source') or get_option('modem-gps-source')
-    geoclue_deps += [ dependency('mm-glib', version: '>= 1.6') ]
+    geoclue_deps += [ dependency('mm-glib', version: '>= 1.10') ]
     sources += [ 'gclue-modem.c',
 				 'gclue-modem.h',
 				 'gclue-modem-manager.c',
@@ -55,6 +56,10 @@ if get_option('nmea-source')
     geoclue_deps += [ dependency('avahi-client', version: '>= 0.6.10'),
                       dependency('avahi-glib', version: '>= 0.6.10') ]
     sources += [ 'gclue-nmea-source.h', 'gclue-nmea-source.c' ]
+endif
+
+if get_option('compass')
+    sources += [ compass_iface_sources , 'gclue-compass.h', 'gclue-compass.c' ]
 endif
 
 c_args = [ '-DG_LOG_DOMAIN="Geoclue"' ]

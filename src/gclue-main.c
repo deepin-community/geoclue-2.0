@@ -36,6 +36,7 @@ static gboolean version = FALSE;
 static gint inactivity_timeout = 60;
 static gboolean submit_data = FALSE;
 static char *submit_nick = NULL;
+static char *nmea_socket = NULL;
 
 static GOptionEntry entries[] =
 {
@@ -67,6 +68,13 @@ static GOptionEntry entries[] =
           &submit_nick,
           N_("Nickname to submit network data under (2-32 characters)"),
           "NICK" },
+        { "nmea-socket",
+          'u',
+          0,
+          G_OPTION_ARG_STRING,
+          &nmea_socket,
+          N_("Path to nmea UNIX socket"),
+          NULL },
         { NULL }
 };
 
@@ -115,12 +123,11 @@ on_bus_acquired (GDBusConnection *connection,
                  const gchar     *name,
                  gpointer         user_data)
 {
-        GError *error = NULL;
+        g_autoptr(GError) error = NULL;
 
         manager = gclue_service_manager_new (connection, &error);
         if (manager == NULL) {
                 g_critical ("Failed to register server: %s", error->message);
-                g_error_free (error);
 
                 exit (-2);
         }
@@ -151,7 +158,7 @@ int
 main (int argc, char **argv)
 {
         guint owner_id;
-        GError *error = NULL;
+        g_autoptr(GError) error = NULL;
         GOptionContext *context;
         GClueConfig *config;
 
@@ -180,6 +187,8 @@ main (int argc, char **argv)
                 gclue_config_set_wifi_submit_data (config, submit_data);
         if (submit_nick != NULL)
                 gclue_config_set_wifi_submit_nick (config, submit_nick);
+        if (nmea_socket != NULL)
+                gclue_config_set_nmea_socket (config, nmea_socket);
 
         owner_id = g_bus_own_name (G_BUS_TYPE_SYSTEM,
                                    BUS_NAME,

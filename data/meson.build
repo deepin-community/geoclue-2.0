@@ -1,5 +1,6 @@
 if get_option('enable-backend')
     conf = configuration_data()
+    conf.set('sysconfdir', sysconfdir)
 
     if get_option('demo-agent')
         conf.set('demo_agent', 'geoclue-demo-agent;')
@@ -18,6 +19,9 @@ if get_option('enable-backend')
     conf.set('dbus_srv_user', get_option('dbus-srv-user'))
     conf.set('sysconfdir', sysconfdir)
 
+    confd_dir = join_paths(conf_dir, 'conf.d')
+    install_emptydir(confd_dir)
+
     service_dir = join_paths(datadir, 'dbus-1', 'system-services')
     configure_file(output: 'org.freedesktop.GeoClue2.service',
                    input: 'org.freedesktop.GeoClue2.service.in',
@@ -33,7 +37,7 @@ if get_option('enable-backend')
     # DBus Service policy file
     dbus_service_dir = get_option('dbus-sys-dir')
     if dbus_service_dir == ''
-        dbus_service_dir = join_paths(sysconfdir, 'dbus-1', 'system.d')
+        dbus_service_dir = join_paths(datadir, 'dbus-1', 'system.d')
     endif
     configure_file(output: 'org.freedesktop.GeoClue2.conf',
                    input: 'org.freedesktop.GeoClue2.conf.in',
@@ -48,7 +52,7 @@ if get_option('enable-backend')
     if systemd_unit_dir == ''
         dep = dependency('systemd', required: false)
         if dep.found()
-            systemd_unit_dir = dep.get_pkgconfig_variable('systemdsystemunitdir')
+            systemd_unit_dir = dep.get_variable(pkgconfig: 'systemdsystemunitdir')
         endif
     endif
 
@@ -57,5 +61,13 @@ if get_option('enable-backend')
                        input: 'geoclue.service.in',
                        configuration: conf,
                        install_dir: systemd_unit_dir)
+    endif
+
+    if get_option('modem-gps-source')
+        polkit_dir = join_paths(get_option('datadir'), 'polkit-1', 'rules.d')
+        configure_file(output: 'org.freedesktop.GeoClue2.rules',
+                       input: 'org.freedesktop.GeoClue2.rules.in',
+                       configuration: conf,
+                       install_dir: polkit_dir)
     endif
 endif

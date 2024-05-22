@@ -1,38 +1,31 @@
 before_script:
     -  sed -i '/^#\sdeb-src /s/^#//' '/etc/apt/sources.list'
     - apt-get --allow-unauthenticated update && apt-get build-dep --yes geoclue-2.0
-    - apt-get install --yes git gobject-introspection libmm-glib-dev wget
+    - apt-get install --yes git gobject-introspection libmm-glib-dev wget valac
     - apt-get install --yes libnotify-dev xsltproc gtk-doc-tools python3-pip
     - apt-get install --yes ninja-build gettext modemmanager-dev
-    - pip3 install meson==0.53.2
+    - DEBIAN_FRONTEND=noninteractive apt-get install --yes libsoup-3.0
+    - pip3 install meson==0.60.0
 
-# Ubuntu 14.04 is not supported, see README for details
-#
-# FIXME: Also disable gtk-doc on Ubuntu 16.04 cause it fails install. Would be nice to get it fixed.
+workflow:
+    rules:
+        - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+        - if: $CI_PIPELINE_SOURCE == 'push'
 
-ubuntu-16.04:
-    image: ubuntu:xenial
+ubuntu-22.04:
+    image: ubuntu:22.04
     artifacts:
         when: always
-        name: "xenial-${CI_COMMIT_REF_NAME}"
-        paths:
-            - "${CI_PROJECT_DIR}/build"
-    script: meson -Dgtk-doc=false build && ninja -C build && ninja -C build test && ninja -C build install
-
-ubuntu-18.04:
-    image: ubuntu:bionic
-    artifacts:
-        when: always
-        name: "bionic-${CI_COMMIT_REF_NAME}"
+        name: "jammy-${CI_COMMIT_REF_NAME}"
         paths:
             - "${CI_PROJECT_DIR}/build"
     script: meson build && ninja -C build && ninja -C build test && ninja -C build install
 
-ubuntu-18.04-no-backend:
-    image: ubuntu:bionic
+ubuntu-22.04-no-backend:
+    image: ubuntu:22.04
     artifacts:
         when: always
-        name: "bionic-no-backend-${CI_COMMIT_REF_NAME}"
+        name: "jammy-no-backend-${CI_COMMIT_REF_NAME}"
         paths:
             - "${CI_PROJECT_DIR}/build"
     script: meson -Denable-backend=false build && ninja -C build && ninja -C build test && ninja -C build install

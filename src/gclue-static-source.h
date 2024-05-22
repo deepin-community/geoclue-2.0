@@ -1,6 +1,6 @@
 /* vim: set et ts=8 sw=8: */
 /*
- * Copyright 2014 Red Hat, Inc.
+ * Copyright © 2022,2023 Oracle and/or its affiliates.
  *
  * Geoclue is free software; you can redistribute it and/or modify it under
  * the terms of the GNU General Public License as published by the Free
@@ -16,35 +16,25 @@
  * with Geoclue; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *
- * Authors: Zeeshan Ali (Khattak) <zeeshanak@gnome.org>
  */
 
-#ifndef GCLUE_3G_TOWER_H
-#define GCLUE_3G_TOWER_H
+#ifndef GCLUE_STATIC_SOURCE_H
+#define GCLUE_STATIC_SOURCE_H
+
+#include <glib.h>
+#include "gclue-location-source.h"
 
 G_BEGIN_DECLS
 
-typedef enum {
-  GCLUE_TOWER_TEC_UNKNOWN = 0,
-  GCLUE_TOWER_TEC_2G = 1,
-  GCLUE_TOWER_TEC_3G = 2,
-  GCLUE_TOWER_TEC_4G = 3,
-  GCLUE_TOWER_TEC_NO_FIX = 99,
-} GClueTowerTec;
-# define GCLUE_TOWER_TEC_MAX_VALID GCLUE_TOWER_TEC_4G
+#define GCLUE_TYPE_STATIC_SOURCE gclue_static_source_get_type ()
 
-typedef struct _GClue3GTower GClue3GTower;
+G_DECLARE_FINAL_TYPE (GClueStaticSource,
+                      gclue_static_source,
+                      GCLUE, STATIC_SOURCE,
+                      GClueLocationSource)
 
-#define GCLUE_3G_TOWER_OPERATOR_CODE_STR_LEN 6
-#define GCLUE_3G_TOWER_COUNTRY_CODE_STR_LEN 3
-
-struct _GClue3GTower {
-        gchar   opc[GCLUE_3G_TOWER_OPERATOR_CODE_STR_LEN + 1];
-        gulong  lac;
-        gulong  cell_id;
-        GClueTowerTec tec;
-};
+GClueStaticSource *gclue_static_source_get_singleton (GClueAccuracyLevel level);
 
 G_END_DECLS
 
-#endif /* GCLUE_3G_TOWER_H */
+#endif /* GCLUE_STATIC_SOURCE_H */

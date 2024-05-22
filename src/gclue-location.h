@@ -58,6 +58,8 @@ struct _GClueLocationClass
         GObjectClass parent_class;
 };
 
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GClueLocation, g_object_unref)
+
 GType gclue_location_get_type (void);
 
 /**
@@ -75,11 +77,25 @@ GType gclue_location_get_type (void);
 #define GCLUE_LOCATION_ACCURACY_UNKNOWN -1
 
 /**
+ * GCLUE_LOCATION_ACCURACY_EXACT:
+ *
+ * Constant representing exact-level accuracy.
+ */
+#define GCLUE_LOCATION_ACCURACY_EXACT 50 /* 50 m */
+
+/**
  * GCLUE_LOCATION_ACCURACY_STREET:
  *
  * Constant representing street-level accuracy.
  */
 #define GCLUE_LOCATION_ACCURACY_STREET 1000 /* 1 km */
+
+/**
+ * GCLUE_LOCATION_ACCURACY_NEIGHBORHOOD:
+ *
+ * Constant representing neighborhood-level accuracy.
+ */
+#define GCLUE_LOCATION_ACCURACY_NEIGHBORHOOD 3000 /* 3 km */
 
 /**
  * GCLUE_LOCATION_ACCURACY_CITY:
@@ -92,6 +108,8 @@ GType gclue_location_get_type (void);
  * GCLUE_LOCATION_ACCURACY_REGION:
  *
  * Constant representing region-level accuracy.
+ *
+ * Currently unused.
  */
 #define GCLUE_LOCATION_ACCURACY_REGION 50000 /* 50 km */
 
@@ -106,6 +124,8 @@ GType gclue_location_get_type (void);
  * GCLUE_LOCATION_ACCURACY_CONTINENT:
  *
  * Constant representing continent-level accuracy.
+ *
+ * Currently unused.
  */
 #define GCLUE_LOCATION_ACCURACY_CONTINENT 3000000 /* 3000 km */
 
@@ -125,7 +145,8 @@ GType gclue_location_get_type (void);
 
 GClueLocation *gclue_location_new (gdouble latitude,
                                    gdouble longitude,
-                                   gdouble accuracy);
+                                   gdouble accuracy,
+                                   const char *description);
 
 GClueLocation *gclue_location_new_full
                                   (gdouble     latitude,
@@ -137,11 +158,13 @@ GClueLocation *gclue_location_new_full
                                    guint64     timestamp,
                                    const char *description);
 
-GClueLocation *gclue_location_create_from_gga
-                                  (const char *gga,
-                                   GError    **error);
+GClueLocation *gclue_location_create_from_nmeas
+                                  (const char     *nmeas[],
+                                   GClueLocation  *prev_location);
 
 GClueLocation *gclue_location_duplicate
+                                  (GClueLocation *location);
+GClueLocation *gclue_location_duplicate_fresh
                                   (GClueLocation *location);
 
 void gclue_location_set_description
