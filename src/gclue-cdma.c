@@ -47,9 +47,9 @@ G_DEFINE_TYPE_WITH_CODE (GClueCDMA,
                          GCLUE_TYPE_LOCATION_SOURCE,
                          G_ADD_PRIVATE (GClueCDMA))
 
-static gboolean
+static GClueLocationSourceStartResult
 gclue_cdma_start (GClueLocationSource *source);
-static gboolean
+static GClueLocationSourceStopResult
 gclue_cdma_stop (GClueLocationSource *source);
 
 static void
@@ -79,14 +79,15 @@ on_cdma_enabled (GObject      *source_object,
                  GAsyncResult *result,
                  gpointer      user_data)
 {
-        GClueCDMA *source = GCLUE_CDMA (user_data);
-        GError *error = NULL;
+        g_autoptr(GError) error = NULL;
 
-        if (!gclue_modem_enable_cdma_finish (source->priv->modem,
+        if (!gclue_modem_enable_cdma_finish (GCLUE_MODEM (source_object),
                                              result,
                                              &error)) {
-                g_warning ("Failed to enable CDMA: %s", error->message);
-                g_error_free (error);
+                if (error && !g_error_matches (error, G_IO_ERROR,
+                                                G_IO_ERROR_CANCELLED)) {
+                        g_warning ("Failed to enable CDMA: %s", error->message);
+                }
         }
 }
 
@@ -141,7 +142,7 @@ gclue_cdma_init (GClueCDMA *source)
 {
         GClueCDMAPrivate *priv;
 
-        source->priv = G_TYPE_INSTANCE_GET_PRIVATE ((source), GCLUE_TYPE_CDMA, GClueCDMAPrivate);
+        source->priv = gclue_cdma_get_instance_private (source);
         priv = source->priv;
 
         priv->cancellable = g_cancellable_new ();
@@ -177,7 +178,9 @@ gclue_cdma_get_singleton (void)
         static GClueCDMA *source = NULL;
 
         if (source == NULL) {
-                source = g_object_new (GCLUE_TYPE_CDMA, NULL);
+                source = g_object_new (GCLUE_TYPE_CDMA,
+                                       "compute-movement", FALSE,
+                                       NULL);
                 g_object_weak_ref (G_OBJECT (source),
                                    on_cdma_destroyed,
                                    &source);
@@ -197,25 +200,29 @@ on_fix_cdma (GClueModem *modem,
 
         location = gclue_location_new (latitude,
                                        longitude,
-                                       1000);     /* Assume 1 km accuracy */
+                                       1000, /* Assume 1 km accuracy */
+                                       "CDMA");
 
         gclue_location_source_set_location (GCLUE_LOCATION_SOURCE (user_data),
                                             location);
         g_object_unref (location);
 }
 
-static gboolean
+static GClueLocationSourceStartResult
 gclue_cdma_start (GClueLocationSource *source)
 {
         GClueLocationSourceClass *base_class;
         GClueCDMAPrivate *priv;
+        GClueLocationSourceStartResult base_result;
 
-        g_return_val_if_fail (GCLUE_IS_LOCATION_SOURCE (source), FALSE);
+        g_return_val_if_fail (GCLUE_IS_LOCATION_SOURCE (source),
+                              GCLUE_LOCATION_SOURCE_START_RESULT_FAILED);
         priv = GCLUE_CDMA (source)->priv;
 
         base_class = GCLUE_LOCATION_SOURCE_CLASS (gclue_cdma_parent_class);
-        if (!base_class->start (source))
-                return FALSE;
+        base_result = base_class->start (source);
+        if (base_result != GCLUE_LOCATION_SOURCE_START_RESULT_OK)
+                return base_result;
 
         g_signal_connect (priv->modem,
                           "fix-cdma",
@@ -228,21 +235,23 @@ gclue_cdma_start (GClueLocationSource *source)
                                          on_cdma_enabled,
                                          source);
 
-        return TRUE;
+        return base_result;
 }
 
-static gboolean
+static GClueLocationSourceStopResult
 gclue_cdma_stop (GClueLocationSource *source)
 {
         GClueCDMAPrivate *priv = GCLUE_CDMA (source)->priv;
         GClueLocationSourceClass *base_class;
-        GError *error = NULL;
+        g_autoptr(GError) error = NULL;
+        GClueLocationSourceStopResult base_result;
 
         g_return_val_if_fail (GCLUE_IS_LOCATION_SOURCE (source), FALSE);
 
         base_class = GCLUE_LOCATION_SOURCE_CLASS (gclue_cdma_parent_class);
-        if (!base_class->stop (source))
-                return FALSE;
+        base_result = base_class->stop (source);
+        if (base_result == GCLUE_LOCATION_SOURCE_STOP_RESULT_STILL_USED)
+                return base_result;
 
         g_signal_handlers_disconnect_by_func (G_OBJECT (priv->modem),
                                               G_CALLBACK (on_fix_cdma),
@@ -254,8 +263,7 @@ gclue_cdma_stop (GClueLocationSource *source)
                                                &error)) {
                         g_warning ("Failed to disable CDMA: %s",
                                    error->message);
-                        g_error_free (error);
                 }
 
-        return TRUE;
+        return base_result;
 }

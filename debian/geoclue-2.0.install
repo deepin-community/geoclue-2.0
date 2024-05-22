@@ -1,13 +1,12 @@
-debian/local/geoclue-2.0.pkla var/lib/polkit-1/localauthority/10-vendor.d/
-debian/local/geoclue-2.0.rules usr/share/polkit-1/rules.d/
-etc/dbus-1/system.d/
+#!/usr/bin/dh-exec
+debian/local/usr.libexec.geoclue etc/apparmor.d/
 etc/geoclue/
 etc/xdg/autostart/geoclue-demo-agent.desktop
-lib/systemd/system/
+usr/lib/systemd/system/
 usr/lib/*/pkgconfig/geoclue-2.0.pc
 usr/libexec/geoclue-2.0/demos/agent
 usr/libexec/geoclue
 usr/share/applications/geoclue-demo-agent.desktop
-usr/share/dbus-1/interfaces/
-usr/share/dbus-1/system-services/
+usr/share/dbus-1/
 usr/share/man/man5/geoclue.5
+[linux-any] usr/share/polkit-1/rules.d/

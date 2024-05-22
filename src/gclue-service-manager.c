@@ -31,11 +31,6 @@
 #include "gclue-locator.h"
 #include "gclue-config.h"
 
-/* 20 seconds as milliseconds */
-#define AGENT_WAIT_TIMEOUT 20000
-/*  20 seconds as microseconds */
-#define AGENT_WAIT_TIMEOUT_USEC (20 * G_USEC_PER_SEC)
-
 static void
 gclue_service_manager_manager_iface_init (GClueDBusManagerIface *iface);
 static void
@@ -46,10 +41,10 @@ struct _GClueServiceManagerPrivate
         GDBusConnection *connection;
         GList *clients;
         GHashTable *agents;
+        GQueue *clients_waiting_agent;
 
         guint last_client_id;
         guint num_clients;
-        gint64 init_time;
 
         GClueLocator *locator;
 };
@@ -72,6 +67,21 @@ enum
 };
 
 static GParamSpec *gParamSpecs[LAST_PROP];
+
+typedef struct
+{
+        GClueDBusManager *manager;
+        GDBusMethodInvocation *invocation;
+        GClueClientInfo *client_info;
+        gboolean reuse_client;
+
+} OnClientInfoNewReadyData;
+
+static void
+on_client_info_new_ready_data_free (gpointer data)
+{
+        g_slice_free (OnClientInfoNewReadyData, data);
+}
 
 static void
 sync_in_use_property (GClueServiceManager *manager)
@@ -127,7 +137,7 @@ delete_client (GClueServiceManager *manager,
 
                 if (compare_func (l->data, compare_func_data) == 0) {
                         g_object_unref (G_OBJECT (l->data));
-                        priv->clients = g_list_remove_link (priv->clients, l);
+                        priv->clients = g_list_delete_link (priv->clients, l);
                         priv->num_clients--;
                         if (priv->num_clients == 0) {
                                 g_object_notify (G_OBJECT (manager), "active");
@@ -138,6 +148,14 @@ delete_client (GClueServiceManager *manager,
 
         g_debug ("Number of connected clients: %u", priv->num_clients);
         sync_in_use_property (manager);
+}
+
+static void
+on_client_notify_active (GObject    *gobject,
+                         GParamSpec *pspec,
+                         gpointer    user_data)
+{
+        sync_in_use_property (GCLUE_SERVICE_MANAGER (user_data));
 }
 
 static void
@@ -155,15 +173,6 @@ on_peer_vanished (GClueClientInfo *info,
                        (char *) bus_name);
 }
 
-typedef struct
-{
-        GClueDBusManager *manager;
-        GDBusMethodInvocation *invocation;
-        GClueClientInfo *client_info;
-        gboolean reuse_client;
-
-} OnClientInfoNewReadyData;
-
 static gboolean
 complete_get_client (OnClientInfoNewReadyData *data)
 {
@@ -171,9 +180,12 @@ complete_get_client (OnClientInfoNewReadyData *data)
         GClueServiceClient *client;
         GClueClientInfo *info = data->client_info;
         GClueAgent *agent_proxy = NULL;
-        GError *error = NULL;
-        char *path;
+        g_autoptr(GError) error = NULL;
+        g_autofree char *path = NULL;
         guint32 user_id;
+
+        /* Disconnect on_peer_vanished_before_completion, if it's there */
+        g_signal_handlers_disconnect_by_data (info, data);
 
         user_id = gclue_client_info_get_user_id (info);
         agent_proxy = g_hash_table_lookup (priv->agents,
@@ -216,10 +228,15 @@ complete_get_client (OnClientInfoNewReadyData *data)
         }
         g_debug ("Number of connected clients: %u", priv->num_clients);
 
-        g_signal_connect (info,
-                          "peer-vanished",
-                          G_CALLBACK (on_peer_vanished),
-                          data->manager);
+        g_signal_connect_object (client,
+                                 "notify::active",
+                                 G_CALLBACK (on_client_notify_active),
+                                 data->manager, 0);
+
+        g_signal_connect_object (info,
+                                 "peer-vanished",
+                                 G_CALLBACK (on_peer_vanished),
+                                 data->manager, 0);
 
 client_created:
         if (data->reuse_client)
@@ -238,12 +255,34 @@ error_out:
                                                        G_DBUS_ERROR_FAILED,
                                                        error->message);
 out:
-        g_clear_error (&error);
         g_clear_object (&info);
-        g_slice_free (OnClientInfoNewReadyData, data);
-        g_free (path);
+        on_client_info_new_ready_data_free (data);
 
         return FALSE;
+}
+
+static void
+on_peer_vanished_before_completion (GClueClientInfo *info,
+                                    gpointer         user_data)
+{
+        OnClientInfoNewReadyData *data = (OnClientInfoNewReadyData *) user_data;
+        GClueServiceManager *self = GCLUE_SERVICE_MANAGER (data->manager);
+        GClueServiceManagerPrivate *priv = self->priv;
+        const char *bus_name;
+
+        bus_name = gclue_client_info_get_bus_name (info);
+        g_debug ("Client `%s` vanished before agent appeared",
+                 bus_name);
+        g_signal_handlers_disconnect_by_data (info,
+                                              user_data);
+        g_dbus_method_invocation_return_error (data->invocation,
+                                               G_DBUS_ERROR,
+                                               G_DBUS_ERROR_DISCONNECTED,
+                                               "%s vanished before completion",
+                                               bus_name);
+        g_queue_remove (priv->clients_waiting_agent, data);
+        on_client_info_new_ready_data_free (data);
+        g_object_unref (info);
 }
 
 static void
@@ -255,10 +294,8 @@ on_client_info_new_ready (GObject      *source_object,
         GClueServiceManagerPrivate *priv = GCLUE_SERVICE_MANAGER (data->manager)->priv;
         GClueClientInfo *info = NULL;
         GClueAgent *agent_proxy;
-        GError *error = NULL;
+        g_autoptr(GError) error = NULL;
         guint32 user_id;
-        gint64 now;
-        gboolean system_app;
 
         info = gclue_client_info_new_finish (res, &error);
         if (info == NULL) {
@@ -266,8 +303,7 @@ on_client_info_new_ready (GObject      *source_object,
                                                                G_DBUS_ERROR,
                                                                G_DBUS_ERROR_FAILED,
                                                                error->message);
-                g_error_free (error);
-                g_slice_free (OnClientInfoNewReadyData, data);
+                on_client_info_new_ready_data_free (data);
 
                 return;
         }
@@ -277,19 +313,20 @@ on_client_info_new_ready (GObject      *source_object,
         user_id = gclue_client_info_get_user_id (info);
         agent_proxy = g_hash_table_lookup (priv->agents,
                                            GINT_TO_POINTER (user_id));
-        now = g_get_monotonic_time ();
-
-        system_app = (gclue_client_info_get_xdg_id (info) == NULL);
-        if (agent_proxy == NULL &&
-            !system_app &&
-            now < (priv->init_time + AGENT_WAIT_TIMEOUT_USEC)) {
+        if (agent_proxy == NULL) {
                 /* Its possible that geoclue was just launched on GetClient
                  * call, in which case agents need some time to register
                  * themselves to us.
                  */
-                g_timeout_add (AGENT_WAIT_TIMEOUT,
-                               (GSourceFunc) complete_get_client,
-                               user_data);
+                g_queue_push_tail (priv->clients_waiting_agent, data);
+                g_signal_connect
+                        (info,
+                         "peer-vanished",
+                         G_CALLBACK (on_peer_vanished_before_completion),
+                         user_data);
+                g_debug ("Client `%s` waiting for agent for user ID '%u'",
+                         gclue_client_info_get_bus_name (info), user_id);
+
                 return;
         }
 
@@ -394,6 +431,7 @@ static void
 add_agent_data_free (AddAgentData *data)
 {
         g_clear_pointer (&data->desktop_id, g_free);
+        g_clear_object (&data->manager);
         g_slice_free (AddAgentData, data);
 }
 
@@ -419,7 +457,8 @@ on_agent_proxy_ready (GObject      *source_object,
         GClueServiceManagerPrivate *priv = GCLUE_SERVICE_MANAGER (data->manager)->priv;
         guint32 user_id;
         GClueAgent *agent;
-        GError *error = NULL;
+        g_autoptr(GError) error = NULL;
+        GList *l;
 
         agent = gclue_agent_proxy_new_for_bus_finish (res, &error);
         if (agent == NULL)
@@ -429,12 +468,25 @@ on_agent_proxy_ready (GObject      *source_object,
         g_debug ("New agent for user ID '%u'", user_id);
         g_hash_table_replace (priv->agents, GINT_TO_POINTER (user_id), agent);
 
-        g_signal_connect (data->info,
-                          "peer-vanished",
-                          G_CALLBACK (on_agent_vanished),
-                          data->manager);
+        g_signal_connect_object (data->info,
+                                 "peer-vanished",
+                                 G_CALLBACK (on_agent_vanished),
+                                 data->manager, 0);
 
         gclue_dbus_manager_complete_add_agent (data->manager, data->invocation);
+
+        l = priv->clients_waiting_agent->head;
+        while (l != NULL) {
+                GList *next = l->next;
+                OnClientInfoNewReadyData *d =
+                        (OnClientInfoNewReadyData *) l->data;
+
+                if (gclue_client_info_get_user_id(d->client_info) == user_id) {
+                        complete_get_client (d);
+                        g_queue_delete_link (priv->clients_waiting_agent, l);
+                }
+                l = next;
+        }
 
         goto out;
 
@@ -444,7 +496,6 @@ error_out:
                                                        G_DBUS_ERROR_FAILED,
                                                        error->message);
 out:
-        g_clear_error (&error);
         add_agent_data_free (data);
 }
 
@@ -456,7 +507,7 @@ on_agent_info_new_ready (GObject      *source_object,
                          gpointer      user_data)
 {
         AddAgentData *data = (AddAgentData *) user_data;
-        GError *error = NULL;
+        g_autoptr(GError) error = NULL;
         GClueConfig *config;
         const char *xdg_id;
 
@@ -466,7 +517,6 @@ on_agent_info_new_ready (GObject      *source_object,
                                                                G_DBUS_ERROR,
                                                                G_DBUS_ERROR_FAILED,
                                                                error->message);
-                g_error_free (error);
                 add_agent_data_free (data);
 
                 return;
@@ -510,7 +560,7 @@ gclue_service_manager_handle_add_agent (GClueDBusManager      *manager,
         peer = g_dbus_method_invocation_get_sender (invocation);
 
         data = g_slice_new0 (AddAgentData);
-        data->manager = manager;
+        data->manager = g_object_ref (manager);
         data->invocation = invocation;
         data->desktop_id = g_strdup (id);
         gclue_client_info_new_async (peer,
@@ -533,6 +583,11 @@ gclue_service_manager_finalize (GObject *object)
                 priv->clients = NULL;
         }
         g_clear_pointer (&priv->agents, g_hash_table_unref);
+        if (priv->clients_waiting_agent != NULL) {
+                g_queue_free_full (priv->clients_waiting_agent,
+                                   on_client_info_new_ready_data_free);
+                priv->clients_waiting_agent = NULL;
+        }
 
         /* Chain up to the parent class */
         G_OBJECT_CLASS (gclue_service_manager_parent_class)->finalize (object);
@@ -600,10 +655,10 @@ gclue_service_manager_constructed (GObject *object)
         G_OBJECT_CLASS (gclue_service_manager_parent_class)->constructed (object);
 
         priv->locator = gclue_locator_new (GCLUE_ACCURACY_LEVEL_EXACT);
-        g_signal_connect (G_OBJECT (priv->locator),
-                          "notify::available-accuracy-level",
-                          G_CALLBACK (on_avail_accuracy_level_changed),
-                          object);
+        g_signal_connect_object (G_OBJECT (priv->locator),
+                                 "notify::available-accuracy-level",
+                                 G_CALLBACK (on_avail_accuracy_level_changed),
+                                 object, 0);
         on_avail_accuracy_level_changed (G_OBJECT (priv->locator),
                                          NULL,
                                          object);
@@ -649,15 +704,13 @@ gclue_service_manager_class_init (GClueServiceManagerClass *klass)
 static void
 gclue_service_manager_init (GClueServiceManager *manager)
 {
-        manager->priv = G_TYPE_INSTANCE_GET_PRIVATE (manager,
-                                                     GCLUE_TYPE_SERVICE_MANAGER,
-                                                     GClueServiceManagerPrivate);
+        manager->priv = gclue_service_manager_get_instance_private (manager);
 
         manager->priv->agents = g_hash_table_new_full (g_direct_hash,
                                                        g_direct_equal,
                                                        NULL,
                                                        g_object_unref);
-        manager->priv->init_time = g_get_monotonic_time ();
+        manager->priv->clients_waiting_agent = g_queue_new ();
 }
 
 static gboolean

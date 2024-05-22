@@ -22,6 +22,8 @@
 #ifndef GCLUE_3G_H
 #define GCLUE_3G_H
 
+#include "config.h"
+
 #include <glib.h>
 #include <gio/gio.h>
 #include "gclue-web-source.h"
@@ -62,7 +64,13 @@ struct _GClue3GClass {
         GClueWebSourceClass parent_class;
 };
 
-GClue3G * gclue_3g_get_singleton (void);
+GClue3G * gclue_3g_get_singleton (GClueAccuracyLevel level);
+
+#if GCLUE_USE_3G_SOURCE
+gboolean gclue_3g_should_skip_tower (GClueAccuracyLevel level);
+#else
+static inline gboolean gclue_3g_should_skip_tower (GClueAccuracyLevel level) { return TRUE; }
+#endif
 
 G_END_DECLS
 

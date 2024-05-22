@@ -5,6 +5,7 @@ Description=Location Lookup Service
 Type=dbus
 BusName=org.freedesktop.GeoClue2
 User=@dbus_srv_user@
+Environment="GSETTINGS_BACKEND=memory"
 ExecStart=@libexecdir@/geoclue
 
 # Filesystem lockdown

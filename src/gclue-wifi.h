@@ -63,7 +63,8 @@ struct _GClueWifiClass {
 };
 
 GClueWifi *        gclue_wifi_get_singleton      (GClueAccuracyLevel level);
-GClueAccuracyLevel gclue_wifi_get_accuracy_level (GClueWifi *wifi);
+gboolean gclue_wifi_should_skip_bsss (GClueAccuracyLevel level);
+GList *gclue_wifi_get_bss_list (GClueWifi *wifi);
 
 G_END_DECLS
 

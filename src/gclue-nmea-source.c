@@ -22,9 +22,13 @@
  */
 
 #include <stdlib.h>
+#include <string.h>
 #include <glib.h>
-#include "gclue-nmea-source.h"
+#include "gclue-config.h"
 #include "gclue-location.h"
+#include "gclue-nmea-utils.h"
+#include "gclue-nmea-source.h"
+#include "gclue-utils.h"
 #include "config.h"
 #include "gclue-enum-types.h"
 
@@ -33,22 +37,37 @@
 #include <avahi-common/malloc.h>
 #include <avahi-common/error.h>
 #include <avahi-glib/glib-watch.h>
+#include <gio/gunixsocketaddress.h>
+
+/* Once we run out of NMEA services to try how long to wait
+ * until retrying all of them.
+ * In seconds.
+ */
+#define SERVICE_UNBREAK_TIME 5
 
 typedef struct AvahiServiceInfo AvahiServiceInfo;
 
 struct _GClueNMEASourcePrivate {
         GSocketConnection *connection;
+        GDataInputStream *input_stream;
 
         GSocketClient *client;
 
         GCancellable *cancellable;
 
+        AvahiGLibPoll *glib_poll;
+
         AvahiClient *avahi_client;
 
         AvahiServiceInfo *active_service;
 
-        /* List of all services but only the most accurate one is used. */
-        GList *all_services;
+        /* List of services to try but only the most accurate one is used. */
+        GList *try_services;
+
+        /* List of known-broken services. */
+        GList *broken_services;
+
+        guint accuracy_refresh_source, unbreak_timer;
 };
 
 G_DEFINE_TYPE_WITH_CODE (GClueNMEASource,
@@ -56,22 +75,21 @@ G_DEFINE_TYPE_WITH_CODE (GClueNMEASource,
                          GCLUE_TYPE_LOCATION_SOURCE,
                          G_ADD_PRIVATE (GClueNMEASource))
 
-static gboolean
+static GClueLocationSourceStartResult
 gclue_nmea_source_start (GClueLocationSource *source);
-static gboolean
+static GClueLocationSourceStopResult
 gclue_nmea_source_stop (GClueLocationSource *source);
 
 static void
-connect_to_service (GClueNMEASource *source);
-static void
-disconnect_from_service (GClueNMEASource *source);
+try_connect_to_service (GClueNMEASource *source);
 
 struct AvahiServiceInfo {
     char *identifier;
     char *host_name;
+    gboolean is_socket;
     guint16 port;
     GClueAccuracyLevel accuracy;
-    guint64 timestamp;
+    gint64 timestamp_add;
 };
 
 static void
@@ -90,16 +108,13 @@ avahi_service_new (const char        *identifier,
                    guint16            port,
                    GClueAccuracyLevel accuracy)
 {
-        GTimeVal tv;
-
         AvahiServiceInfo *service = g_slice_new0 (AvahiServiceInfo);
 
         service->identifier = g_strdup (identifier);
         service->host_name = g_strdup (host_name);
         service->port = port;
         service->accuracy = accuracy;
-        g_get_current_time (&tv);
-        service->timestamp = tv.tv_sec;
+        service->timestamp_add = g_get_monotonic_time ();
 
         return service;
 }
@@ -122,16 +137,41 @@ compare_avahi_service_by_accuracy_n_time (gconstpointer a,
 {
         AvahiServiceInfo *first, *second;
         gint diff;
+        gint64 tdiff;
 
         first = (AvahiServiceInfo *) a;
         second = (AvahiServiceInfo *) b;
 
         diff = second->accuracy - first->accuracy;
+        if (diff)
+                return diff;
 
-        if (diff == 0)
-                return first->timestamp - second->timestamp;
+        g_assert (first->timestamp_add >= 0);
+        g_assert (second->timestamp_add >= 0);
+        tdiff = first->timestamp_add - second->timestamp_add;
+        if (tdiff < 0)
+                return -1;
+        else if (tdiff > 0)
+                return 1;
+        else
+                return 0;
+}
 
-        return diff;
+static void
+disconnect_from_service (GClueNMEASource *source)
+{
+        GClueNMEASourcePrivate *priv = source->priv;
+
+        if (!priv->active_service)
+                return;
+
+        g_cancellable_cancel (priv->cancellable);
+
+        g_clear_object (&priv->input_stream);
+        g_clear_object (&priv->connection);
+        g_clear_object (&priv->client);
+        g_clear_object (&priv->cancellable);
+        priv->active_service = NULL;
 }
 
 static gboolean
@@ -145,9 +185,9 @@ reconnection_required (GClueNMEASource *source)
          * 2. a more accurate service than one currently in use, is now
          *    available.
          */
-        return (priv->active_service != NULL &&
-                (priv->all_services == NULL ||
-                 priv->active_service != priv->all_services->data));
+        return priv->active_service == NULL ||
+                priv->try_services == NULL ||
+                priv->active_service != priv->try_services->data;
 }
 
 static void
@@ -157,25 +197,35 @@ reconnect_service (GClueNMEASource *source)
                 return;
 
         disconnect_from_service (source);
-        connect_to_service (source);
+        try_connect_to_service (source);
 }
 
-static void
-refresh_accuracy_level (GClueNMEASource *source)
+static GClueAccuracyLevel get_head_accuracy (GList *list)
 {
-        GClueAccuracyLevel new, existing;
+        AvahiServiceInfo *service;
+
+        if (!list)
+                return GCLUE_ACCURACY_LEVEL_NONE;
+
+        service = (AvahiServiceInfo *) list->data;
+        return service->accuracy;
+}
+
+static gboolean
+on_refresh_accuracy_level (gpointer user_data)
+{
+        GClueNMEASource *source = GCLUE_NMEA_SOURCE (user_data);
+        GClueNMEASourcePrivate *priv = source->priv;
+        GClueAccuracyLevel new_try, new_broken, new, existing;
+
+        priv->accuracy_refresh_source = 0;
 
         existing = gclue_location_source_get_available_accuracy_level
                         (GCLUE_LOCATION_SOURCE (source));
 
-        if (source->priv->all_services != NULL) {
-                AvahiServiceInfo *service;
-
-                service = (AvahiServiceInfo *) source->priv->all_services->data;
-                new = service->accuracy;
-        } else {
-                new = GCLUE_ACCURACY_LEVEL_NONE;
-        }
+        new_try = get_head_accuracy (priv->try_services);
+        new_broken = get_head_accuracy (priv->broken_services);
+        new = MAX (new_try, new_broken);
 
         if (new != existing) {
                 g_debug ("Available accuracy level from %s: %u",
@@ -184,6 +234,109 @@ refresh_accuracy_level (GClueNMEASource *source)
                               "available-accuracy-level", new,
                               NULL);
         }
+
+        return G_SOURCE_REMOVE;
+}
+
+static void
+refresh_accuracy_level (GClueNMEASource *source)
+{
+        GClueNMEASourcePrivate *priv = source->priv;
+
+        if (priv->accuracy_refresh_source) {
+                return;
+        }
+
+        g_debug ("Scheduling NMEA accuracy level refresh");
+        priv->accuracy_refresh_source = g_idle_add (on_refresh_accuracy_level,
+                                                    source);
+}
+
+static gboolean
+on_service_unbreak_time (gpointer source)
+{
+        GClueNMEASourcePrivate *priv = GCLUE_NMEA_SOURCE (source)->priv;
+
+        priv->unbreak_timer = 0;
+
+        if (!priv->try_services && priv->broken_services) {
+                g_debug ("Unbreaking existing NMEA services");
+
+                priv->try_services = priv->broken_services;
+                priv->broken_services = NULL;
+
+                reconnect_service (source);
+        }
+
+        return G_SOURCE_REMOVE;
+}
+
+static void
+check_unbreak_timer (GClueNMEASource *source)
+{
+        GClueNMEASourcePrivate *priv = source->priv;
+
+        if (priv->try_services || !priv->broken_services) {
+                if (priv->unbreak_timer) {
+                        g_debug ("Removing unnecessary NMEA unbreaking timer");
+
+                        g_source_remove (priv->unbreak_timer);
+                        priv->unbreak_timer = 0;
+                }
+
+                return;
+        }
+
+        if (priv->unbreak_timer) {
+                return;
+        }
+
+        g_debug ("Scheduling NMEA unbreaking timer");
+        priv->unbreak_timer = g_timeout_add_seconds (SERVICE_UNBREAK_TIME,
+                                                     on_service_unbreak_time,
+                                                     source);
+}
+
+static void
+service_lists_changed (GClueNMEASource *source)
+{
+        check_unbreak_timer (source);
+        reconnect_service (source);
+        refresh_accuracy_level (source);
+}
+
+static gboolean
+check_service_exists (GClueNMEASource *source,
+                      const char *name)
+{
+        GClueNMEASourcePrivate *priv = source->priv;
+        AvahiServiceInfo *service;
+        GList *item;
+        gboolean ret = FALSE;
+
+        /* only `name` is required here */
+        service = avahi_service_new (name,
+                                     NULL,
+                                     0,
+                                     GCLUE_ACCURACY_LEVEL_NONE);
+
+        item = g_list_find_custom (priv->try_services,
+                                   service,
+                                   compare_avahi_service_by_identifier);
+        if (item) {
+                ret = TRUE;
+        } else {
+                item = g_list_find_custom (priv->broken_services,
+                                           service,
+                                           compare_avahi_service_by_identifier);
+                if (item) {
+                        ret = TRUE;
+                }
+        }
+
+        g_clear_pointer (&service, avahi_service_free);
+
+        return ret;
 }
 
 static void
@@ -191,6 +344,7 @@ add_new_service (GClueNMEASource *source,
                  const char *name,
                  const char *host_name,
                  uint16_t port,
+                 gboolean is_socket,
                  AvahiStringList *txt)
 {
         GClueAccuracyLevel accuracy = GCLUE_ACCURACY_LEVEL_NONE;
@@ -200,6 +354,17 @@ add_new_service (GClueNMEASource *source,
         char *key, *value;
         GEnumClass *enum_class;
         GEnumValue *enum_value;
+
+        if (check_service_exists (source, name)) {
+                g_debug ("NMEA service %s already exists", name);
+                return;
+        }
+
+        if (!txt) {
+	        accuracy = GCLUE_ACCURACY_LEVEL_EXACT;
+
+	        goto CREATE_SERVICE;
+        }
 
         node = avahi_string_list_find (txt, "accuracy");
 
@@ -236,43 +401,72 @@ add_new_service (GClueNMEASource *source,
 
 CREATE_SERVICE:
         service = avahi_service_new (name, host_name, port, accuracy);
+        service->is_socket = is_socket;
 
-        source->priv->all_services = g_list_insert_sorted
-                (source->priv->all_services,
+        source->priv->try_services = g_list_insert_sorted
+                (source->priv->try_services,
                  service,
                  compare_avahi_service_by_accuracy_n_time);
 
-        refresh_accuracy_level (source);
-        reconnect_service (source);
-
-        n_services = g_list_length (source->priv->all_services);
-
+        n_services = g_list_length (source->priv->try_services);
         g_debug ("No. of _nmea-0183._tcp services %u", n_services);
+
+        service_lists_changed (source);
 }
 
 static void
-remove_service (GClueNMEASource *source,
-                AvahiServiceInfo *service)
+add_new_service_avahi (GClueNMEASource *source,
+                       const char *name,
+                       const char *host_name,
+                       uint16_t port,
+                       AvahiStringList *txt)
 {
-        guint n_services = 0;
+        add_new_service (source, name, host_name, port, FALSE, txt);
+}
 
+static void
+add_new_service_socket (GClueNMEASource *source,
+                       const char *name,
+                       const char *socket_path)
+{
+        add_new_service (source, name, socket_path, 0, TRUE, NULL);
+}
+
+static void
+service_broken (GClueNMEASource *source)
+{
+        GClueNMEASourcePrivate *priv = source->priv;
+        AvahiServiceInfo *service = priv->active_service;
+
+        g_assert (service);
+
+        disconnect_from_service (source);
+
+        priv->try_services = g_list_remove (priv->try_services,
+                                            service);
+        priv->broken_services = g_list_insert_sorted
+                (priv->broken_services,
+                 service,
+                compare_avahi_service_by_accuracy_n_time);
+
+        service_lists_changed (source);
+}
+
+static void
+remove_service_from_list (GList **list,
+                          GList *item)
+{
+        AvahiServiceInfo *service = item->data;
+
+        *list = g_list_delete_link (*list, item);
         avahi_service_free (service);
-        source->priv->all_services = g_list_remove
-                (source->priv->all_services, service);
-
-        n_services = g_list_length (source->priv->all_services);
-
-        g_debug ("No. of _nmea-0183._tcp services %u",
-                 n_services);
-
-        refresh_accuracy_level (source);
-        reconnect_service (source);
 }
 
 static void
 remove_service_by_name (GClueNMEASource *source,
                         const char      *name)
 {
+        GClueNMEASourcePrivate *priv = source->priv;
         AvahiServiceInfo *service;
         GList *item;
 
@@ -282,15 +476,31 @@ remove_service_by_name (GClueNMEASource *source,
                                      0,
                                      GCLUE_ACCURACY_LEVEL_NONE);
 
-        item = g_list_find_custom (source->priv->all_services,
+        item = g_list_find_custom (priv->try_services,
                                    service,
                                    compare_avahi_service_by_identifier);
-        avahi_service_free (service);
+        if (item) {
+                if (item->data == priv->active_service) {
+                        g_debug ("Active NMEA service removed, disconnecting.");
+                        disconnect_from_service (source);
+                }
 
-        if (item == NULL)
-                return;
+                remove_service_from_list (&priv->try_services,
+                                          item);
+        } else {
+                item = g_list_find_custom (priv->broken_services,
+                                           service,
+                                           compare_avahi_service_by_identifier);
+                if (item) {
+                        g_assert (item->data != priv->active_service);
+                        remove_service_from_list (&priv->broken_services,
+                                                  item);
+                }
+        }
 
-        remove_service (source, item->data);
+        g_clear_pointer (&service, avahi_service_free);
+
+        service_lists_changed (source);
 }
 
 static void
@@ -331,15 +541,18 @@ resolve_callback (AvahiServiceResolver  *service_resolver,
         }
 
         case AVAHI_RESOLVER_FOUND:
-                g_debug ("Service %s:%u resolved",
+                g_debug ("Service '%s' of type '%s' in domain '%s' resolved to %s:%u",
+                         name,
+                         type,
+                         domain,
                          host_name,
-                         port);
+                         (unsigned int)port);
 
-                add_new_service (GCLUE_NMEA_SOURCE (user_data),
-                                 name,
-                                 host_name,
-                                 port,
-                                 txt);
+                add_new_service_avahi (GCLUE_NMEA_SOURCE (user_data),
+                                       name,
+                                       host_name,
+                                       port,
+                                       txt);
 
                 break;
         }
@@ -352,11 +565,7 @@ client_callback (AvahiClient     *avahi_client,
                  AvahiClientState state,
                  void            *user_data)
 {
-        GClueNMEASourcePrivate *priv = GCLUE_NMEA_SOURCE (user_data)->priv;
-
         g_return_if_fail (avahi_client != NULL);
-
-        priv->avahi_client = avahi_client;
 
         if (state == AVAHI_CLIENT_FAILURE) {
                 const char *errorstr = avahi_strerror
@@ -442,73 +651,144 @@ browse_callback (AvahiServiceBrowser   *service_browser,
         }
 }
 
-static void
-on_read_gga_sentence (GObject      *object,
-                      GAsyncResult *result,
-                      gpointer      user_data)
-{
-        GClueNMEASource *source = GCLUE_NMEA_SOURCE (user_data);
-        GDataInputStream *data_input_stream = G_DATA_INPUT_STREAM (object);
-        GError *error = NULL;
-        GClueLocation *location;
-        gsize data_size = 0 ;
-        char *message;
+#define NMEA_LINE_END "\r\n"
+#define NMEA_LINE_END_CTR (sizeof (NMEA_LINE_END) - 1)
 
-        message = g_data_input_stream_read_line_finish (data_input_stream,
+static void nmea_skip_delim (GBufferedInputStream *stream,
+                             GCancellable *cancellable)
+{
+        const char *buf;
+        gsize buf_size;
+        size_t delim_skip;
+        g_autoptr(GError) error = NULL;
+
+        buf = (const char *) g_buffered_input_stream_peek_buffer (stream,
+                                                                  &buf_size);
+
+        delim_skip = strnspn (buf, NMEA_LINE_END, buf_size);
+        for (size_t ctr = 0; ctr < delim_skip; ctr++) {
+                if (g_buffered_input_stream_read_byte (stream, cancellable, &error) < 0) {
+                        if (error && !g_error_matches (error, G_IO_ERROR,
+                                                       G_IO_ERROR_CANCELLED)) {
+                                g_warning ("Failed to skip %zu / %zu NMEA delimiter: %s",
+                                           ctr, delim_skip, error->message);
+                        }
+                        break;
+                }
+        }
+}
+
+static gboolean nmea_check_delim (GBufferedInputStream *stream)
+{
+        const char *buf;
+        gsize buf_size;
+
+        buf = (const char *) g_buffered_input_stream_peek_buffer (stream,
+                                                                  &buf_size);
+
+        return strnpbrk (buf, NMEA_LINE_END, buf_size) != NULL;
+}
+
+#define NMEA_STR_LEN 128
+static void
+on_read_nmea_sentence (GObject      *object,
+                       GAsyncResult *result,
+                       gpointer      user_data)
+{
+        GClueNMEASource *source = NULL;
+        GDataInputStream *data_input_stream = G_DATA_INPUT_STREAM (object);
+        g_autoptr(GError) error = NULL;
+        GClueLocation *prev_location;
+        g_autoptr(GClueLocation) location = NULL;
+        gsize data_size = 0 ;
+        g_autofree char *message = NULL;
+        gint i;
+        const gchar *sentences[3];
+        gchar gga[NMEA_STR_LEN];
+        gchar rmc[NMEA_STR_LEN];
+
+        message = g_data_input_stream_read_upto_finish (data_input_stream,
                                                         result,
                                                         &data_size,
                                                         &error);
 
-        if (message == NULL) {
-                if (error != NULL) {
-                        if (error->code == G_IO_ERROR_CLOSED)
-                                g_debug ("Socket closed.");
-                        else if (error->code != G_IO_ERROR_CANCELLED)
-                                g_warning ("Error when receiving message: %s",
-                                           error->message);
-                        g_error_free (error);
-                } else {
-                        g_debug ("Nothing to read");
+        gga[0] = '\0';
+        rmc[0] = '\0';
+
+        do {
+                if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+                        return;
+
+                if (!source)
+                        source = GCLUE_NMEA_SOURCE (user_data);
+
+                if (message == NULL) {
+                        if (error != NULL) {
+                                if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CLOSED)) {
+                                        g_debug ("NMEA socket closed.");
+                                } else {
+                                        g_warning ("Error when receiving message: %s",
+                                                   error->message);
+                                }
+                                service_broken (source);
+                                return;
+                        } else {
+                                g_debug ("NMEA empty read");
+                                /* GLib has a bug where g_data_input_stream_read_upto_finish
+                                 * returns NULL when reading a line with only stop chars.
+                                 * Convert this NULL to a zero-length message. See:
+                                 * https://gitlab.gnome.org/GNOME/glib/-/issues/655
+                                 */
+                                message = g_strdup ("");
+                        }
+
                 }
-                g_object_unref (data_input_stream);
+                g_debug ("Network source sent: \"%s\"", message);
 
-                if (source->priv->active_service != NULL)
-                        /* In case service did not advertise it exiting
-                         * or we failed to receive it's notification.
-                         */
-                        remove_service (source, source->priv->active_service);
+                if (gclue_nmea_type_is (message, "GGA")) {
+                        g_strlcpy (gga, message, NMEA_STR_LEN);
+                } else if (gclue_nmea_type_is (message, "RMC")) {
+                        g_strlcpy (rmc, message, NMEA_STR_LEN);
+                }
 
-                return;
+                nmea_skip_delim (G_BUFFERED_INPUT_STREAM (data_input_stream),
+                                 source->priv->cancellable);
+
+                if (nmea_check_delim (G_BUFFERED_INPUT_STREAM (data_input_stream))) {
+                    g_clear_pointer (&message, g_free);
+                    message = g_data_input_stream_read_upto
+                            (data_input_stream,
+                             NMEA_LINE_END, NMEA_LINE_END_CTR,
+                             &data_size, NULL, &error);
+                } else {
+                    break;
+                }
+        } while (TRUE);
+
+        i = 0;
+        if (gga[0])
+                sentences[i++] = gga;
+        if (rmc[0])
+                sentences[i++] = rmc;
+        sentences[i] = NULL;
+
+        if (i > 0) {
+                prev_location = gclue_location_source_get_location
+                        (GCLUE_LOCATION_SOURCE (source));
+                location = gclue_location_create_from_nmeas (sentences,
+                                                             prev_location);
+                if (location) {
+                        gclue_location_source_set_location
+                                (GCLUE_LOCATION_SOURCE (source), location);
+                }
         }
-        g_debug ("Network source sent: \"%s\"", message);
 
-        if (!g_str_has_prefix (message, "$GAGGA") &&  /* Galieo */
-            !g_str_has_prefix (message, "$GBGGA") &&  /* BeiDou */
-            !g_str_has_prefix (message, "$BDGGA") &&  /* BeiDou */
-            !g_str_has_prefix (message, "$GLGGA") &&  /* GLONASS */
-            !g_str_has_prefix (message, "$GNGGA") &&  /* GNSS (combined) */
-            !g_str_has_prefix (message, "$GPGGA") &&  /* GPS, SBAS, QZSS */
-            !g_str_has_prefix (message, "$QZGGA")) {  /* QZSS */
-                g_debug ("Ignoring non-GGA sentence from NMEA source");
-
-                goto READ_NEXT_LINE;
-        }
-
-        location = gclue_location_create_from_gga (message, &error);
-
-        if (error != NULL) {
-                g_warning ("Error: %s", error->message);
-                g_clear_error (&error);
-        } else {
-                gclue_location_source_set_location
-                        (GCLUE_LOCATION_SOURCE (source), location);
-        }
-
-READ_NEXT_LINE:
-        g_data_input_stream_read_line_async (data_input_stream,
+        g_data_input_stream_read_upto_async (data_input_stream,
+                                             NMEA_LINE_END,
+                                             NMEA_LINE_END_CTR,
                                              G_PRIORITY_DEFAULT,
                                              source->priv->cancellable,
-                                             on_read_gga_sentence,
+                                             on_read_nmea_sentence,
                                              source);
 }
 
@@ -517,96 +797,168 @@ on_connection_to_location_server (GObject      *object,
                                   GAsyncResult *result,
                                   gpointer      user_data)
 {
-        GClueNMEASource *source = GCLUE_NMEA_SOURCE (user_data);
         GSocketClient *client = G_SOCKET_CLIENT (object);
-        GError *error = NULL;
-        GDataInputStream *data_input_stream;
-        GInputStream *input_stream;
+        GClueNMEASource *source;
+        g_autoptr(GSocketConnection) connection = NULL;
+        g_autoptr(GError) error = NULL;
 
-        source->priv->connection = g_socket_client_connect_to_host_finish
+        connection = g_socket_client_connect_to_host_finish
                 (client,
                  result,
                  &error);
 
-        if (error != NULL) {
-                if (error->code != G_IO_ERROR_CANCELLED)
-                        g_warning ("Failed to connect to NMEA service: %s", error->message);
-                g_clear_error (&error);
-
+        if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
                 return;
         }
 
-        input_stream = g_io_stream_get_input_stream
-                (G_IO_STREAM (source->priv->connection));
-        data_input_stream = g_data_input_stream_new (input_stream);
+        source = GCLUE_NMEA_SOURCE (user_data);
 
-        g_data_input_stream_read_line_async (data_input_stream,
+        if (error != NULL) {
+                g_warning ("Failed to connect to NMEA service: %s", error->message);
+                service_broken (source);
+                return;
+        }
+
+        g_assert (connection);
+        g_debug ("NMEA service connected.");
+
+        g_assert (!source->priv->connection);
+        source->priv->connection = g_steal_pointer (&connection);
+
+        g_assert (!source->priv->input_stream);
+        source->priv->input_stream = g_data_input_stream_new
+                (g_io_stream_get_input_stream (G_IO_STREAM (source->priv->connection)));
+
+        g_data_input_stream_read_upto_async (source->priv->input_stream,
+                                             NMEA_LINE_END,
+                                             NMEA_LINE_END_CTR,
                                              G_PRIORITY_DEFAULT,
                                              source->priv->cancellable,
-                                             on_read_gga_sentence,
+                                             on_read_nmea_sentence,
                                              source);
 }
 
 static void
-connect_to_service (GClueNMEASource *source)
+try_connect_to_service (GClueNMEASource *source)
 {
         GClueNMEASourcePrivate *priv = source->priv;
 
-        if (priv->all_services == NULL)
+        if (!gclue_location_source_get_active (GCLUE_LOCATION_SOURCE (source))) {
+                g_warn_if_fail (!priv->active_service);
+
+                return;
+        }
+
+        if (priv->active_service)
                 return;
 
+        if (priv->try_services == NULL)
+                return;
+
+        g_assert (!priv->cancellable);
+        priv->cancellable = g_cancellable_new ();
+
+        g_assert (!priv->client);
         priv->client = g_socket_client_new ();
-        g_cancellable_reset (priv->cancellable);
 
         /* The service with the highest accuracy will be stored in the beginning
          * of the list.
          */
-        priv->active_service = (AvahiServiceInfo *) priv->all_services->data;
+        priv->active_service = (AvahiServiceInfo *) priv->try_services->data;
 
-        g_socket_client_connect_to_host_async
-                (priv->client,
+        g_debug ("Trying to connect to NMEA %sservice %s:%u.",
+                 priv->active_service->is_socket ? "socket " : "",
                  priv->active_service->host_name,
-                 priv->active_service->port,
-                 priv->cancellable,
-                 on_connection_to_location_server,
-                 source);
+                 (unsigned int) priv->active_service->port);
+
+        if (!priv->active_service->is_socket) {
+		g_socket_client_connect_to_host_async
+			(priv->client,
+			 priv->active_service->host_name,
+			 priv->active_service->port,
+			 priv->cancellable,
+			 on_connection_to_location_server,
+			 source);
+        } else {
+                g_autoptr(GSocketAddress) addr = NULL;
+
+                addr = g_unix_socket_address_new (priv->active_service->host_name);
+		g_socket_client_connect_async (priv->client,
+                               G_SOCKET_CONNECTABLE (addr),
+                               priv->cancellable,
+                               on_connection_to_location_server,
+                               source);
+        }
+}
+
+static gboolean
+remove_avahi_services_from_list (GClueNMEASource *source, GList **list)
+{
+        GClueNMEASourcePrivate *priv = source->priv;
+        gboolean removed_active = FALSE;
+        GList *l = *list;
+
+        while (l != NULL) {
+                GList *next = l->next;
+                AvahiServiceInfo *service = l->data;
+
+                if (!service->is_socket) {
+                        if (service == priv->active_service) {
+                                g_debug ("Active NMEA service was Avahi-provided, disconnecting.");
+                                disconnect_from_service (source);
+                                removed_active = TRUE;
+                        }
+
+                        remove_service_from_list (list, l);
+                }
+
+                l = next;
+        }
+
+        return removed_active;
 }
 
 static void
-disconnect_from_service (GClueNMEASource *source)
+disconnect_avahi_client (GClueNMEASource *source)
 {
         GClueNMEASourcePrivate *priv = source->priv;
 
-        g_cancellable_cancel (priv->cancellable);
-
-        if (priv->connection != NULL) {
-                GError *error = NULL;
-
-                g_io_stream_close (G_IO_STREAM (priv->connection),
-                                   NULL,
-                                   &error);
-                if (error != NULL)
-                        g_warning ("Error in closing socket connection: %s", error->message);
+        remove_avahi_services_from_list (source, &priv->try_services);
+        if (remove_avahi_services_from_list (source, &priv->broken_services)) {
+                g_warn_if_reached ();
         }
 
-        g_clear_object (&priv->connection);
-        g_clear_object (&priv->client);
-        priv->active_service = NULL;
+        g_clear_pointer (&priv->avahi_client, avahi_client_free);
+
+        service_lists_changed (source);
 }
 
 static void
 gclue_nmea_source_finalize (GObject *gnmea)
 {
-        GClueNMEASourcePrivate *priv = GCLUE_NMEA_SOURCE (gnmea)->priv;
+        GClueNMEASource *source = GCLUE_NMEA_SOURCE (gnmea);
+        GClueNMEASourcePrivate *priv = source->priv;
 
         G_OBJECT_CLASS (gclue_nmea_source_parent_class)->finalize (gnmea);
 
-        g_clear_object (&priv->connection);
-        g_clear_object (&priv->client);
-        g_clear_object (&priv->cancellable);
-        if (priv->avahi_client)
-                avahi_client_free (priv->avahi_client);
-        g_list_free_full (priv->all_services,
+        disconnect_avahi_client (source);
+        disconnect_from_service (source);
+
+        if (priv->accuracy_refresh_source) {
+                g_source_remove (priv->accuracy_refresh_source);
+                priv->accuracy_refresh_source = 0;
+        }
+
+        if (priv->unbreak_timer) {
+                g_source_remove (priv->unbreak_timer);
+                priv->unbreak_timer = 0;
+        }
+
+        g_clear_pointer (&priv->glib_poll, avahi_glib_poll_free);
+
+        g_list_free_full (g_steal_pointer (&priv->try_services),
+                          avahi_service_free);
+        g_list_free_full (g_steal_pointer (&priv->broken_services),
                           avahi_service_free);
 }
 
@@ -623,30 +975,33 @@ gclue_nmea_source_class_init (GClueNMEASourceClass *klass)
 }
 
 static void
-gclue_nmea_source_init (GClueNMEASource *source)
+try_connect_avahi_client (GClueNMEASource *source)
 {
-        GClueNMEASourcePrivate *priv;
         AvahiServiceBrowser *service_browser;
+        GClueNMEASourcePrivate *priv = source->priv;
         const AvahiPoll *poll_api;
-        AvahiGLibPoll *glib_poll;
         int error;
 
-        source->priv = G_TYPE_INSTANCE_GET_PRIVATE ((source),
-                                                    GCLUE_TYPE_NMEA_SOURCE,
-                                                    GClueNMEASourcePrivate);
-        priv = source->priv;
+        if (priv->avahi_client) {
+                AvahiClientState avahi_state;
 
-        glib_poll = avahi_glib_poll_new (NULL, G_PRIORITY_DEFAULT);
-        poll_api = avahi_glib_poll_get (glib_poll);
+                avahi_state = avahi_client_get_state (priv->avahi_client);
+                if (avahi_state != AVAHI_CLIENT_FAILURE) {
+                        return;
+                }
 
-        priv->cancellable = g_cancellable_new ();
+                g_debug ("Avahi client in failure state, trying to reinit.");
+                disconnect_avahi_client (source);
+        }
 
-        avahi_client_new (poll_api,
-                          0,
-                          client_callback,
-                          source,
-                          &error);
+        g_assert (priv->glib_poll);
+        poll_api = avahi_glib_poll_get (priv->glib_poll);
 
+        priv->avahi_client = avahi_client_new (poll_api,
+                                               0,
+                                               client_callback,
+                                               source,
+                                               &error);
         if (priv->avahi_client == NULL) {
                 g_warning ("Failed to connect to avahi service: %s",
                            avahi_strerror (error));
@@ -662,15 +1017,43 @@ gclue_nmea_source_init (GClueNMEASource *source)
                  0,
                  browse_callback,
                  source);
-
-
         if (service_browser == NULL) {
                 const char *errorstr;
 
                 error = avahi_client_errno (priv->avahi_client);
                 errorstr = avahi_strerror (error);
                 g_warning ("Failed to browse avahi services: %s", errorstr);
+                goto fail_client;
         }
+
+        return;
+
+fail_client:
+        disconnect_avahi_client (source);
+}
+
+static void
+gclue_nmea_source_init (GClueNMEASource *source)
+{
+        GClueNMEASourcePrivate *priv;
+        const char *nmea_socket;
+        GClueConfig *config;
+
+        source->priv = gclue_nmea_source_get_instance_private (source);
+        priv = source->priv;
+
+        priv->glib_poll = avahi_glib_poll_new (NULL, G_PRIORITY_DEFAULT);
+
+        config = gclue_config_get_singleton ();
+
+        nmea_socket = gclue_config_get_nmea_socket (config);
+        if (nmea_socket != NULL) {
+                add_new_service_socket (source,
+                                        "nmea-socket",
+                                        nmea_socket);
+        }
+
+        try_connect_avahi_client (source);
 }
 
 /**
@@ -687,43 +1070,53 @@ gclue_nmea_source_get_singleton (void)
         static GClueNMEASource *source = NULL;
 
         if (source == NULL) {
-                source = g_object_new (GCLUE_TYPE_NMEA_SOURCE, NULL);
+                source = g_object_new (GCLUE_TYPE_NMEA_SOURCE,
+                                       "priority-source", TRUE,
+                                       NULL);
                 g_object_add_weak_pointer (G_OBJECT (source),
                                            (gpointer) &source);
-        } else
+        } else {
                 g_object_ref (source);
+                try_connect_avahi_client (source);
+        }
 
         return source;
 }
 
-static gboolean
+static GClueLocationSourceStartResult
 gclue_nmea_source_start (GClueLocationSource *source)
 {
         GClueLocationSourceClass *base_class;
+        GClueLocationSourceStartResult base_result;
 
-        g_return_val_if_fail (GCLUE_IS_NMEA_SOURCE (source), FALSE);
+        g_return_val_if_fail (GCLUE_IS_NMEA_SOURCE (source),
+                              GCLUE_LOCATION_SOURCE_START_RESULT_FAILED);
 
         base_class = GCLUE_LOCATION_SOURCE_CLASS (gclue_nmea_source_parent_class);
-        if (!base_class->start (source))
-                return FALSE;
+        base_result = base_class->start (source);
+        if (base_result == GCLUE_LOCATION_SOURCE_START_RESULT_FAILED)
+                return base_result;
 
-        connect_to_service (GCLUE_NMEA_SOURCE (source));
+        try_connect_avahi_client (GCLUE_NMEA_SOURCE (source));
+        reconnect_service (GCLUE_NMEA_SOURCE (source));
 
-        return TRUE;
+        return base_result;
 }
 
-static gboolean
+static GClueLocationSourceStopResult
 gclue_nmea_source_stop (GClueLocationSource *source)
 {
         GClueLocationSourceClass *base_class;
+        GClueLocationSourceStopResult base_result;
 
         g_return_val_if_fail (GCLUE_IS_NMEA_SOURCE (source), FALSE);
 
         base_class = GCLUE_LOCATION_SOURCE_CLASS (gclue_nmea_source_parent_class);
-        if (!base_class->stop (source))
-                return FALSE;
+        base_result = base_class->stop (source);
+        if (base_result == GCLUE_LOCATION_SOURCE_STOP_RESULT_STILL_USED)
+                return base_result;
 
         disconnect_from_service (GCLUE_NMEA_SOURCE (source));
 
-        return TRUE;
+        return base_result;
 }

@@ -20,8 +20,13 @@
  */
 
 #include <glib.h>
+#include <config.h>
 #include "gclue-location-source.h"
+
+#if GCLUE_USE_COMPASS
 #include "gclue-compass.h"
+#include "gclue-config.h"
+#endif
 
 /**
  * SECTION:gclue-location-source
@@ -31,9 +36,9 @@
  * The interface all geolocation sources must implement.
  **/
 
-static gboolean
+static GClueLocationSourceStartResult
 start_source (GClueLocationSource *source);
-static gboolean
+static GClueLocationSourceStopResult
 stop_source (GClueLocationSource *source);
 
 struct _GClueLocationSourcePrivate
@@ -47,8 +52,11 @@ struct _GClueLocationSourcePrivate
 
         gboolean compute_movement;
         gboolean scramble_location;
+        gboolean priority_source;
 
+#if GCLUE_USE_COMPASS
         GClueCompass *compass;
+#endif
 
         guint heading_changed_id;
 };
@@ -67,11 +75,13 @@ enum
         PROP_AVAILABLE_ACCURACY_LEVEL,
         PROP_COMPUTE_MOVEMENT,
         PROP_SCRAMBLE_LOCATION,
+        PROP_PRIORITY_SOURCE,
         LAST_PROP
 };
 
 static GParamSpec *gParamSpecs[LAST_PROP];
 
+#if GCLUE_USE_COMPASS
 static gboolean
 set_heading_from_compass (GClueLocationSource *source,
                           GClueLocation       *location)
@@ -89,7 +99,8 @@ set_heading_from_compass (GClueLocationSource *source,
             heading == curr_heading)
                 return FALSE;
 
-        g_debug ("%s got new heading %f", G_OBJECT_TYPE_NAME (source), heading);
+        g_debug ("%s got new heading from compass: %f",
+                 G_OBJECT_TYPE_NAME (source), heading);
         /* We trust heading from compass more than any other source so we always
          * override existing heading
          */
@@ -111,6 +122,7 @@ on_compass_heading_changed (GObject    *gobject,
         if (set_heading_from_compass (source, source->priv->location))
                 g_object_notify (G_OBJECT (source), "location");
 }
+#endif /* GCLUE_USE_COMPASS */
 
 static void
 gclue_location_source_get_property (GObject    *object,
@@ -146,6 +158,10 @@ gclue_location_source_get_property (GObject    *object,
                 g_value_set_boolean (value, source->priv->scramble_location);
                 break;
 
+        case PROP_PRIORITY_SOURCE:
+                g_value_set_boolean (value, source->priv->priority_source);
+                break;
+
         default:
                 G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
         }
@@ -178,6 +194,10 @@ gclue_location_source_set_property (GObject      *object,
 
         case PROP_SCRAMBLE_LOCATION:
                 source->priv->scramble_location = g_value_get_boolean (value);
+                break;
+
+        case PROP_PRIORITY_SOURCE:
+                source->priv->priority_source = g_value_get_boolean (value);
                 break;
 
         default:
@@ -271,69 +291,90 @@ gclue_location_source_class_init (GClueLocationSourceClass *klass)
         g_object_class_install_property (object_class,
                                          PROP_SCRAMBLE_LOCATION,
                                          gParamSpecs[PROP_SCRAMBLE_LOCATION]);
+
+        gParamSpecs[PROP_PRIORITY_SOURCE] =
+                g_param_spec_boolean ("priority-source",
+                                      "PrioritySource",
+                                      "Whether source is priority or not",
+                                      FALSE,
+                                      G_PARAM_READWRITE |
+                                      G_PARAM_CONSTRUCT_ONLY);
+        g_object_class_install_property (object_class,
+                                         PROP_PRIORITY_SOURCE,
+                                         gParamSpecs[PROP_PRIORITY_SOURCE]);
+
 }
 
 static void
 gclue_location_source_init (GClueLocationSource *source)
 {
-        source->priv =
-                G_TYPE_INSTANCE_GET_PRIVATE (source,
-                                             GCLUE_TYPE_LOCATION_SOURCE,
-                                             GClueLocationSourcePrivate);
+        source->priv = gclue_location_source_get_instance_private (source);
         source->priv->compute_movement = TRUE;
         source->priv->time_threshold = gclue_min_uint_new ();
+        source->priv->priority_source = FALSE;
 }
 
-static gboolean
+static GClueLocationSourceStartResult
 start_source (GClueLocationSource *source)
 {
         source->priv->active_counter++;
         if (source->priv->active_counter > 1) {
                 g_debug ("%s already active, not starting.",
                          G_OBJECT_TYPE_NAME (source));
-                return TRUE;
+                return GCLUE_LOCATION_SOURCE_START_RESULT_ALREADY_STARTED;
         }
 
+#if GCLUE_USE_COMPASS
         if (source->priv->compute_movement) {
-                source->priv->compass = gclue_compass_get_singleton ();
-                source->priv->heading_changed_id = g_signal_connect
-                        (G_OBJECT (source->priv->compass),
-                         "notify::heading",
-                         G_CALLBACK (on_compass_heading_changed),
-                         source);
+                GClueConfig *config = gclue_config_get_singleton ();
+
+                if (gclue_config_get_enable_compass (config)) {
+                        source->priv->compass = gclue_compass_get_singleton ();
+                        source->priv->heading_changed_id = g_signal_connect
+                                (G_OBJECT (source->priv->compass),
+                                 "notify::heading",
+                                 G_CALLBACK (on_compass_heading_changed),
+                                 source);
+                } else {
+                        source->priv->compass = NULL;
+                        g_debug ("Compass is disabled in config");
+                }
         }
+#endif
 
         g_object_notify (G_OBJECT (source), "active");
         g_debug ("%s now active", G_OBJECT_TYPE_NAME (source));
-        return TRUE;
+        return GCLUE_LOCATION_SOURCE_START_RESULT_OK;
 }
 
-static gboolean
+static GClueLocationSourceStopResult
 stop_source (GClueLocationSource *source)
 {
         if (source->priv->active_counter == 0) {
                 g_debug ("%s already inactive, not stopping.",
                          G_OBJECT_TYPE_NAME (source));
-                return TRUE;
+                return GCLUE_LOCATION_SOURCE_STOP_RESULT_ALREADY_STOPPED;
         }
 
         source->priv->active_counter--;
         if (source->priv->active_counter > 0) {
                 g_debug ("%s still in use, not stopping.",
                          G_OBJECT_TYPE_NAME (source));
-                return FALSE;
+                return GCLUE_LOCATION_SOURCE_STOP_RESULT_STILL_USED;
         }
 
+#if GCLUE_USE_COMPASS
         if (source->priv->compass) {
                 g_signal_handler_disconnect (source->priv->compass,
                                              source->priv->heading_changed_id);
                 g_clear_object (&source->priv->compass);
         }
+#endif
 
         g_object_notify (G_OBJECT (source), "active");
         g_debug ("%s now inactive", G_OBJECT_TYPE_NAME (source));
 
-        return TRUE;
+        return GCLUE_LOCATION_SOURCE_STOP_RESULT_OK;
 }
 
 /**
@@ -401,27 +442,36 @@ gclue_location_source_set_location (GClueLocationSource *source,
         priv->location = gclue_location_duplicate (location);
 
         if (priv->scramble_location) {
-                gdouble latitude, distance, accuracy;
+                gdouble latitude, distance, accuracy, scramble_range;
 
                 latitude = gclue_location_get_latitude (priv->location);
                 accuracy = gclue_location_get_accuracy (priv->location);
 
+                scramble_range = GCLUE_LOCATION_ACCURACY_NEIGHBORHOOD;
+                if (accuracy >= scramble_range) {
+                        /* If the location source is already pretty inaccurate
+                         * do just a limited range scrambling to be sure.
+                         */
+                        scramble_range /= 3;
+                }
+
                 /* Randomization is needed to stop apps from calculationg the
                  * actual location.
                  */
-                distance = (gdouble) g_random_int_range (1, 3);
+                distance = g_random_double_range (0, scramble_range);
+                distance /= 1000;
 
                 if (g_random_boolean ())
                         latitude += distance * LATITUDE_IN_KM;
                 else
                         latitude -= distance * LATITUDE_IN_KM;
-                accuracy += 3000;
+                accuracy += scramble_range;
 
                 g_object_set (G_OBJECT (priv->location),
                               "latitude", latitude,
                               "accuracy", accuracy,
                               NULL);
-                g_debug ("location scrambled");
+                g_debug ("%s location scrambled", G_OBJECT_TYPE_NAME (source));
         }
 
         speed = gclue_location_get_speed (location);
@@ -441,7 +491,9 @@ gclue_location_source_set_location (GClueLocationSource *source,
                 gclue_location_set_speed (priv->location, speed);
         }
 
+#if GCLUE_USE_COMPASS
         set_heading_from_compass (source, location);
+#endif
         heading = gclue_location_get_heading (location);
         if (heading == GCLUE_LOCATION_HEADING_UNKNOWN) {
                 if (cur_location != NULL && priv->compute_movement)
@@ -467,6 +519,21 @@ gclue_location_source_get_active (GClueLocationSource *source)
         g_return_val_if_fail (GCLUE_IS_LOCATION_SOURCE (source), FALSE);
 
         return (source->priv->active_counter > 0);
+}
+
+/**
+ * gclue_location_source_get_priority_source:
+ * @source: a #GClueLocationSource
+ *
+ * Returns: Returns: TRUE if source (e.g. GPS) has priority over other
+ * sources, FALSE otherwise.
+ **/
+gboolean
+gclue_location_source_get_priority_source (GClueLocationSource *source)
+{
+        g_return_val_if_fail (GCLUE_IS_LOCATION_SOURCE (source), FALSE);
+
+        return source->priv->priority_source;
 }
 
 /**

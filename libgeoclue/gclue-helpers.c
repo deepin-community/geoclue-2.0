@@ -161,7 +161,7 @@ on_get_client_ready (GObject      *source_object,
 {
         GTask *task = G_TASK (user_data);
         GClueManager *manager = GCLUE_MANAGER (source_object);
-        char *client_path;
+        g_autofree char *client_path = NULL;
         GError *error = NULL;
 
         if (!gclue_manager_call_get_client_finish (manager,
@@ -182,7 +182,6 @@ on_get_client_ready (GObject      *source_object,
                                         g_task_get_cancellable (task),
                                         on_client_proxy_ready,
                                         task);
-        g_free (client_path);
         g_object_unref (manager);
 }
 

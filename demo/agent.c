@@ -51,14 +51,13 @@ on_get_bus_ready (GObject      *source_object,
                   GAsyncResult *res,
                   gpointer      user_data)
 {
-        GError *error = NULL;
+        g_autoptr(GError) error = NULL;
         GDBusConnection *connection;
 
         connection = g_bus_get_finish (res, &error);
         if (connection == NULL) {
                 g_critical ("Failed to get connection to system bus: %s",
                             error->message);
-                g_error_free (error);
 
                 exit (-2);
         }

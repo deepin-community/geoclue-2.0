@@ -1,3 +1,87 @@
+geoclue-2.0 (2.7.1-2) unstable; urgency=medium
+
+  * Team upload
+  * Install systemd service files into /usr/lib.
+    Add a corresponding versioned Build-Depends on debhelper (>= 13.11.6) to
+    ensure we have a recent enough version of dh_installsystemd.
+  * Update lintian override accordingly
+
+ -- Michael Biebl <biebl@debian.org>  Wed, 31 Jan 2024 14:45:04 +0100
+
+geoclue-2.0 (2.7.1-1) unstable; urgency=medium
+
+  * New upstream release
+    - Bump libglib2.0-dev BD to >= 2.68.0
+    - debian/geoclue-2.0.install: Adjust installation paths of dbus files
+  * Update apparmor policy to allow several DBus operations, from Ubuntu
+    Thanks to Georgia Garcia (Closes: #1050694)
+
+ -- Laurent Bigonville <bigon@debian.org>  Fri, 22 Sep 2023 13:03:48 +0200
+
+geoclue-2.0 (2.7.0-3) unstable; urgency=medium
+
+  * Move D-Bus policy files from /etc/dbus-1 to /usr/share/dbus-1 (Closes:
+    #1041780)
+  * Apparmor: Allow to query IPv6 status (Closes: #1041894)
+
+ -- Laurent Bigonville <bigon@debian.org>  Sat, 29 Jul 2023 09:06:57 +0200
+
+geoclue-2.0 (2.7.0-2) unstable; urgency=medium
+
+  * Apparmor: Allow reading configuration files in /etc/geoclue/conf.d/
+  * Apparmor: Allow reading /etc/geolocation.
+    Thanks to Edward Betts <edward@4angle.com>
+
+ -- Laurent Bigonville <bigon@debian.org>  Sat, 15 Jul 2023 12:36:08 +0200
+
+geoclue-2.0 (2.7.0-1) unstable; urgency=medium
+
+  [ Michael Biebl ]
+  * Remove deprecated polkit pkla file
+
+  [ Laurent Bigonville ]
+  * New upstream release
+    - Drop d/p/Add-support-for-building-with-libsoup3.patch: Applied upstream
+  * debian/control: Bump meson build-dependency to >= 0.60.0
+
+ -- Laurent Bigonville <bigon@debian.org>  Sat, 24 Jun 2023 09:34:17 +0200
+
+geoclue-2.0 (2.6.0-3) unstable; urgency=medium
+
+  * Do not install the polkit rules files on non-linux architectures.
+    This should fix the FTBFS on these architectures
+  * debian/geoclue-2.0.lintian-overrides: Fix the lintian overrides
+  * debian/control: Bump Standards-Version to 4.6.2 (no further changes)
+  * debian/control: Drop obsolete Breaks/Replaces
+  * Add apparmor profile for the geoclue daemon
+
+ -- Laurent Bigonville <bigon@debian.org>  Mon, 19 Jun 2023 09:30:37 +0200
+
+geoclue-2.0 (2.6.0-2) unstable; urgency=medium
+
+  [ Laurent Bigonville ]
+  * debian/geoclue-2.0.lintian-overrides: Fix dbus-policy-excessively-broad
+    override
+  * debian/geoclue-2.0.install: Install polkit rules shipped by upstream
+  * debian/geoclue-2.0.install: Rename the .pkla file to match the name
+    of the upstream rules file
+
+  [ Jeremy Bicha ]
+  * Cherry-pick proposed patch to build with libsoup3
+  * Build-Depend on libsoup-3.0-dev
+
+ -- Jeremy Bicha <jbicha@ubuntu.com>  Wed, 14 Sep 2022 11:46:47 -0400
+
+geoclue-2.0 (2.6.0-1) unstable; urgency=medium
+
+  * New upstream version 2.6.0
+    - debian/patches/: Drop all patches, they (or similar patches) have been
+      merged upstream
+    - debian/libgeoclue-2-0.symbols: Add newly exported symbols
+  * debian/control: Bump Standards-Version to 4.6.0 (no further changes)
+
+ -- Laurent Bigonville <bigon@debian.org>  Tue, 05 Apr 2022 14:47:54 +0200
+
 geoclue-2.0 (2.5.7-3) unstable; urgency=medium
 
   * Properly detect that applications are running in flatpak when using cgroup

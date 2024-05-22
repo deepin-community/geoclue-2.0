@@ -6,13 +6,14 @@ is to make creating location-aware applications as simple as possible.
 
 Geoclue is Free Software, licensed under GNU GPLv2+.
 
-Geoclue comprises the following functionalities : 
+Geoclue comprises the following functionalities :
 - WiFi-based geolocation (accuracy: in meters)
 - GPS(A) receivers (accuracy: in centimeters)
-- GPS of other devices on the local network, e.g smartphones (accuracy: 
+- GPS of other devices on the local network, e.g smartphones (accuracy:
   in centimeters)
 - 3G modems (accuracy: in kilometers, unless modem has GPS)
 - GeoIP (accuracy: city-level)
+- Static location source (reads location from a system-wide file)
 
 WiFi-based geolocation makes use of 
 [Mozilla Location Service](https://wiki.mozilla.org/CloudServices/Location). 
@@ -31,9 +32,7 @@ been dropped in favour of the
 # History
 Geoclue was started during the GNOME Summit 2006 in Boston. At least 
 Keith Preston and Tuomas Kuosmanen can be blamed. There was a total rewrite 
-after version 0.9. 
-
-Use tag "0.9" (as in git checkout 0.9) if you need the old code.
+after version 0.9.
 
 There was yet another rewrite that we call geoclue2. The first version to 
 introduce the re-write was version 1.99.
