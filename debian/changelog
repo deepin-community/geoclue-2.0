@@ -1,3 +1,9 @@
+geoclue-2.0 (2.7.1-2deepin1) unstable; urgency=medium
+
+  * del autostart desktop.
+
+ -- xinpeng.wang <wangxinpeng@uniontech.com>  Fri, 16 May 2025 11:08:48 +0800
+
 geoclue-2.0 (2.7.1-2) unstable; urgency=medium
 
   * Team upload
