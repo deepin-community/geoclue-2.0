@@ -1,3 +1,9 @@
+geoclue-2.0 (2.7.1-2deepin2) unstable; urgency=medium
+
+  * Add url conf.
+
+ -- dongshengyuan <dongshengyuan@uniontech.com>  Thu, 19 Mar 2026 11:02:56 +0800
+
 geoclue-2.0 (2.7.1-2deepin1) unstable; urgency=medium
 
   * del autostart desktop.
