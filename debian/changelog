@@ -1,0 +1,719 @@
+geoclue-2.0 (2.7.2-2deepin1) unstable; urgency=medium
+
+  * del autostart desktop.
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.7.2-2) unstable; urgency=medium
+
+  * debian/control: Add Provides: ${gir:Provides} for the -dev package
+  * debian/rules: Use api.beacondb.net instead of beacondb.net
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.7.2-1) unstable; urgency=low
+
+  * New upstream release
+    - Bump build-dependencies
+  * debian/watch: Fix the logic after GitLab changes (Closes: #1079914)
+  * debian/geoclue-2.0.lintian-overrides: Drop
+    package-supports-alternative-init-but-no-init.d-script, not used anymore
+  * debian/control:
+    - Bump Standards-Version to 4.7.0 (no further changes)
+    - Update build-dependencies to please lintian: pkg-config => pkgconf
+  * debian/rules: Use beaconDB as a source, with the maintainer approval
+    (Closes: #1074427)
+  * debian/patches: Cherry-pick several patches for beaconDB
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.7.1-2) unstable; urgency=medium
+
+  * Team upload
+  * Install systemd service files into /usr/lib.
+    Add a corresponding versioned Build-Depends on debhelper (>= 13.11.6) to
+    ensure we have a recent enough version of dh_installsystemd.
+  * Update lintian override accordingly
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.7.1-1) unstable; urgency=medium
+
+  * New upstream release
+    - Bump libglib2.0-dev BD to >= 2.68.0
+    - debian/geoclue-2.0.install: Adjust installation paths of dbus files
+  * Update apparmor policy to allow several DBus operations, from Ubuntu
+    Thanks to Georgia Garcia (Closes: #1050694)
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.7.0-3) unstable; urgency=medium
+
+  * Move D-Bus policy files from /etc/dbus-1 to /usr/share/dbus-1 (Closes:
+    #1041780)
+  * Apparmor: Allow to query IPv6 status (Closes: #1041894)
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.7.0-2) unstable; urgency=medium
+
+  * Apparmor: Allow reading configuration files in /etc/geoclue/conf.d/
+  * Apparmor: Allow reading /etc/geolocation.
+    Thanks to Edward Betts <edward@4angle.com>
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.7.0-1) unstable; urgency=medium
+
+  [ Michael Biebl ]
+  * Remove deprecated polkit pkla file
+
+  [ Laurent Bigonville ]
+  * New upstream release
+    - Drop d/p/Add-support-for-building-with-libsoup3.patch: Applied upstream
+  * debian/control: Bump meson build-dependency to >= 0.60.0
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.6.0-3) unstable; urgency=medium
+
+  * Do not install the polkit rules files on non-linux architectures.
+    This should fix the FTBFS on these architectures
+  * debian/geoclue-2.0.lintian-overrides: Fix the lintian overrides
+  * debian/control: Bump Standards-Version to 4.6.2 (no further changes)
+  * debian/control: Drop obsolete Breaks/Replaces
+  * Add apparmor profile for the geoclue daemon
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.6.0-2) unstable; urgency=medium
+
+  [ Laurent Bigonville ]
+  * debian/geoclue-2.0.lintian-overrides: Fix dbus-policy-excessively-broad
+    override
+  * debian/geoclue-2.0.install: Install polkit rules shipped by upstream
+  * debian/geoclue-2.0.install: Rename the .pkla file to match the name
+    of the upstream rules file
+
+  [ Jeremy Bicha ]
+  * Cherry-pick proposed patch to build with libsoup3
+  * Build-Depend on libsoup-3.0-dev
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.6.0-1) unstable; urgency=medium
+
+  * New upstream version 2.6.0
+    - debian/patches/: Drop all patches, they (or similar patches) have been
+      merged upstream
+    - debian/libgeoclue-2-0.symbols: Add newly exported symbols
+  * debian/control: Bump Standards-Version to 4.6.0 (no further changes)
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.5.7-3) unstable; urgency=medium
+
+  * Properly detect that applications are running in flatpak when using cgroup
+    v2. Thanks to Guido Günther <agx@sigxcpu.org> (Closes: #985345)
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.5.7-2) unstable; urgency=medium
+
+  * d/p/fix-nowifi-query.patch: Fix getting a location if the computer has no
+    wifi card (Closes: #978437)
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.5.7-1) unstable; urgency=medium
+
+  [ Laurent Bigonville ]
+  * New upstream version 2.5.7
+    - Check the maximum allowed accuracy level even for system applications.
+      Respect the value of the user preference concerning the usage of their
+      geolocation. This should fix the privacy and GDPR conformity concerns as
+      the user explicitly needs to enable the option.
+      Note that there is no distinction between the system applications
+      anymore, turning on the option is allowing them all to get the location.
+      (Closes: #924516, #958497)
+  * debian/README.Debian: Add information about MLS and a link to the service
+    Privacy Notice page
+  * Add debian/salsa-ci.yml file
+  * debian/control: Remove Craig Andrews from the Uploaders.
+    He has not been active since 2009, thanks for his previous work on the
+    package
+  * d/p/: Add a patch to make the Mozilla API key configurable
+  * debian/rules: Use the key that has been allocated to debian for MLS queries
+  * d/gbp.conf: Stop adding the commit-id and set multimaint-merge to True
+  * debian/control: Bump Standards-Version to 4.5.1 (no further changes)
+  * d/p: Add an upstream patch to fix the display of the usage indicator
+  * d/p: Remove the remaining differences between system app and flatpak ones.
+    This fix an issue when geoclue is D-Bus activated by a client and also
+    make sure that a running client is disconnected when the user disables
+    the location services (set the accuracy to 0)
+
+  [ Chris McGee ]
+  * debian/control: Add rules requires root
+
+  [ Debian Janitor ]
+  * Refer to specific version of license LGPL-2+.
+  * Apply multi-arch hints.
+    + geoclue-doc, libgeoclue-doc: Add Multi-Arch: foreign.
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.5.6-1) unstable; urgency=medium
+
+  [ Debian Janitor ]
+  * [99359d91] Bump debhelper from old 11 to 12.
+  * [f9dd0d99] Set debhelper-compat version in Build-Depends.
+  * [a0d0042a] debian/copyright: use spaces rather than tabs to start
+    continuation lines.
+  * [32c230e4] Set upstream metadata fields: Repository, Repository-Browse.
+  * [3a2f4acf] Drop unnecessary dependency on dh-autoreconf.
+
+  [ Laurent Bigonville ]
+  * [ae0a90ea] debian/control: Bump Standards-Version to 4.5.0 (no further
+    changes)
+
+  [ Will Thompson ]
+  * [d2643a89] New upstream version 2.5.6
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.5.5-1) unstable; urgency=medium
+
+  * [b4cfe4e7] debian/rules: Install the NEWS file as upstream changelog
+  * [3d876ed8] New upstream version 2.5.5
+  * [29ba01cf] Set libexecdir to /usr/libexec now that the policy allows it
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.5.3-1) unstable; urgency=medium
+
+  * [48856ed2] New upstream version 2.5.3
+  * [1bf75efb] debian/control: Bump Standards-Version to 4.4.0 (no further
+    changes)
+  * [9e941a46] debian/libgeoclue-2-0.symbols: Add newly exported symbols
+  * [158dae34] debian/geoclue-2.0.install: Install new geoclue.5 manpage
+  * [f0c2f253] debian/copyright: Use https for the format uri, to please lintian
+  * [80a3663a] debian/copyright: Removed unused file paragraph
+  * [ed125085] debian/geoclue-2.0.lintian-overrides: Override
+    package-supports-alternative-init-but-no-init.d-script. The daemon is
+    D-Bus activated, not started at boot
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.5.2-1) unstable; urgency=medium
+
+  * [da1f3cfb] New upstream version 2.5.2
+  * [e6718a56] debian/control: Bump glib dependency to 2.44.0
+  * [768c8549] debian/control: Bump Standards-Version to 4.3.0 (no further
+    changes)
+  * [6c170f04] debian/libgeoclue-2-0.symbols: Add newly exported symbols
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.5.1-1) unstable; urgency=high
+
+  * [1fe595bd] debian/control: Make libgeoclue-2-dev depend explicitly against
+    libglib2.0-dev
+  * [70d0712f] New upstream version 2.5.1
+  * [1b962c94] Drop debian/patches/fix-libexecdir.patch, merged upstream
+  * [19ba20a3] debian/libgeoclue-2-0.symbols: Readd
+    gclue_accuracy_level_get_string(), as it was part of the public API in the
+    end, oups. Set the urgency to high so the fix for the API/ABI is going to
+    testing faster.
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.5.0-2) unstable; urgency=medium
+
+  * [3a99c10e] debian/rules: Fix FTBFS if gtkdoc-scan is not installed or
+    nodoc profile is set
+  * [a365e5d4] Install Vala API files
+  * [6ee8e720] debian/control: Bump Standards-Version to 4.2.1 (no further
+    changes)
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.5.0-1) unstable; urgency=medium
+
+  * [3ad2110f] New upstream version 2.5.0
+  * [94136a08] debian/watch: Update URL and point to gitlab.fdo
+  * [5960ec67] Update the debian buildsystem now that the upstream one has
+    switched to meson (Closes: #829822)
+  * [1cf79680] debian/patches/02-move-demo-lib.patch: Refreshed
+  * [c1fafc87] debian/libgeoclue-2-0.symbols: Drop
+    gclue_accuracy_level_get_string, not part of the public API
+  * [36f68d91] d/p/fix-libexecdir.patch: Fix libexecdir in .service files
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.4.12-2) unstable; urgency=medium
+
+  * [41f51d40] Move the demo agent to the main package (Closes: #901594)
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.4.12-1) unstable; urgency=medium
+
+  * [9e431aae] New upstream version 2.4.12
+  * [d3f6d85e] Add API and library documentation packages
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.4.11-1) unstable; urgency=medium
+
+  * [7ccde738] Bump debhelper compatibility to 11
+  * [30d692b7] debian/control: Update Homepage field
+  * [80038652] New upstream version 2.4.11
+    - Fix the demo agent, so it's functional for DE not implementing one
+      (Closes: #900936)
+  * [aca24ff5] debian/control: Bump libglib2.0-dev build-dep to 2.44.0
+  * [13ace8c7] debian/control: Bump Standards-Version to 4.2.0 (no further
+    changes)
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.4.10-1) unstable; urgency=medium
+
+  * [1302d116] debian/control: Update Vcs-* fields, git repository moved to
+    salsa
+  * [67aa4d57] debian/control: Bump Standards-Version to 4.1.4 (no further
+    changes)
+  * [6234883d] debian/rules: Use dh_missing instead of dh_install to list
+    "missing" files
+  * [302b000a] debian/watch: Use https instead of http
+  * [06a6e472] Drop autotools-dev and --with autotools-dev sequence
+  * [d50e8ef9] New upstream version 2.4.10
+  * [24f3b9d7] debian/control: Bump libmm-glib-dev build-dep to >= 1.6
+  * [c68df224] Move the demo programs to -demo package and install the demo
+    agent as well
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.4.7-1) unstable; urgency=medium
+
+  * [065bebb7] New upstream version 2.4.7
+  * [d23d922d] Drop d/p/01-debianize-desktop-name.patch, not relevant anymore
+  * [bae39d49] debian/control: Bump Standards-Version to 4.0.0 (no further
+    changes)
+  * [bfafc110] debian/gbp.conf: Rename the sections as requested
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.4.5-1) unstable; urgency=medium
+
+  * [c9d350d8] New upstream version 2.4.5
+    - Fix frequent segfaults (Closes: #842352)
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.4.4-1) unstable; urgency=medium
+
+  * [f75c7386] New upstream version 2.4.4
+  * [33211aef] debian/libgeoclue-2-0.symbols: Add new exported symbols
+  * [5ad1c133] debian/libgeoclue-2-0.symbols: Add Build-Depends-Package field
+  * [286914d2] debian/rules: Enable all hardening flags
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.4.3-1) unstable; urgency=medium
+
+  * [056c5e99] Imported Upstream version 2.4.3
+  * [d432a95f] Bump Standards-Version to 3.9.8 (no further changes)
+  * [67815126] debian/control: Update the Vcs-* URL to please lintian (again)
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.4.1-1) unstable; urgency=medium
+
+  * [e6f8dec3] Imported Upstream version 2.4.1
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.4.0-2) unstable; urgency=medium
+
+  * [db9c32f0] debian/control: Fix a typo (interract → interact)
+    (Closes: 805744)
+  * [ebd72f04] Make the package for the convenience library Multi-arch: same
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.4.0-1) unstable; urgency=medium
+
+  * [5ebae7fa] Imported Upstream version 2.4.0
+  * [11903739] Enable the convenience library and the gir support
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.3.0-2) unstable; urgency=medium
+
+  * [5d5632b7] Add iio-sensor-proxy to the Recommends
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.3.0-1) unstable; urgency=medium
+
+  * [3ddfc9c3] Imported Upstream version 2.3.0
+  * [c6fb8dbf] Drop libgeoip-dev and geoip-database build-dependencies
+  * [dcd9f66b] Drop 03-Only-allow-the-geoclue-user-to-call-methods.patch merged
+               upstream
+  * [78dbddd3] Add libavahi-{client,glib}-dev to the build-dep per configure
+  * [327caf3d] Add avahi-daemon to the Recommends
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.2.0-1) unstable; urgency=medium
+
+  * [128e902f] Imported Upstream version 2.2.0
+  * [c1d01fc4] debian/control: Explicitly require libsoup >= 2.42
+  * [2871cbe5] Update debian/copyright file
+  * [3fbfdc1e] Only allows the geoclue user to call methods from of the Agent's
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.1.10-2) unstable; urgency=medium
+
+  * [8d8c2fe3] Add polkit rules and pkla files to allow geoclue to query
+               a modem location (Closes: #765184)
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.1.10-1) unstable; urgency=medium
+
+  * [9c3fbdfe] Only recommends modemmanger and wpasupplicant where the pkg
+               is built
+  * [0915c031] d/p/01-debianize-desktop-name.patch: Readd support for epiphany
+  * [fc709078] Imported Upstream version 2.1.10
+  * [3e48e5fa] Explicitly disable CMDA source on non linux architectures
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.1.9-1) unstable; urgency=medium
+
+  * [99a40345] debian/rules: Drop --enable-geoip-server=no, removed upstream
+  * [fea6d4ca] Imported Upstream version 2.1.9
+  * [b9f6f7b4] Adjust build-dependencies
+  * [bdb99eb1] Refresh debian/patches/01-debianize-desktop-name.patch
+  * [e22479f3] debian/rules: Pass --disable-silent-rules to the configure
+  * [53b1af2f] debian/rules: Drop --disable-network-manager flag, removed upstream
+  * [089a553b] debian/control: Recommends modemmanager and wpasupplicant
+  * [ce8b13d9] debian/control: Bump Standards-Version to 3.9.6 (no further changes)
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.1.8-1) unstable; urgency=medium
+
+  * [be92d2de] Imported Upstream version 2.1.8
+  * [cd6b5b05] Rename --disable-wifi-source flag to --disable-network-manager
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.1.7-1) unstable; urgency=medium
+
+  * [a9fca2b3] Imported Upstream version 2.1.7
+  * [fec0846e] Fix the path for the demos again
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.1.5-1) experimental; urgency=medium
+
+  * [5870445e] Imported Upstream version 2.1.5
+  * [e3a7f60a] Pass --with-systemdsystemunitdir= to the configure
+  * [6bf1384a] debian/rules: debian/geoclue.install: Install all the files
+  * [186733a1] Adjust build-dependencies
+  * [ebcf9aa7] Explicitly disable ModemManager and NetworkManager features on
+               !linux
+  * [6c1b663d] Use the debian names for the browsers .desktop files
+  * [a4337eed] Move the demos from /usr/share to /usr/lib
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.0.0-4) unstable; urgency=medium
+
+  * [8a5379b3] debian/copyright: Add licence for docs/geoclue-docs.xml
+    (Closes: #735281)
+  * [6c74e39d] debian/copyright: Deduplicate LGPL2+ license text
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue-2.0 (2.0.0-3) unstable; urgency=medium
+
+  * [edf6939d] Rename the package to geoclue-2.0
+  * [f86c3d95] Move the geoclue daemon to /usr/lib/geoclue-2.0
+  * [81975651] Add Breaks/Replaces against geoclue (>= 2.0)
+  * [33218e3b] Bump Standards-Version to 3.9.5 (no further changes)
+  * [411ab144] Update debian/copyright file
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (2.0.0-2) experimental; urgency=low
+
+  [ Andreas Henriksson ]
+  * [906ea31c] Add dependency on adduser as it's used by postinst
+    (Closes: #726620)
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (2.0.0-1) experimental; urgency=low
+
+  [ Andreas Henriksson ]
+  * [c554933f] Update debian/watch for new release location
+  * [a416d4b8] Use dh-autoreconf
+  * [06a59fd0] Update build-dependencies according to configure.ac
+    - wrap-and-sort while at it.
+  * [dd1414ea] Add intltool build-dependency
+  * [c82386d7] Drop debian/patches/
+  * [48ba0870] Revamp binary packages for geoclue2
+    - only ip based lookup supported for now by upstream
+  * [60dfaa42] Drop obsolete configure flags
+  * [15678803] Add build-dependency on geoip-database
+    - used by geoip-server testsuite
+  * [975d22a6] Make test-suite non-fatal
+    - GeoLiteCity.dat is required for test-suite to pass
+    - "geoip-database" does not include the city database
+  * [328d889f] Update debian/geoclue.install for GeoClue2
+  * [a39a3d0f] Drop debian/docs
+  * [dac9048d] Drop debian/README.source
+    - we're using standard 3.0 (quilt) format
+  * [98e32cd5] Update debian/copyright for GeoClue2
+    - now in machine readable 1.0 format
+    - license changed to GPLv2+
+
+  [ Laurent Bigonville ]
+  * [b1480045] Imported Upstream version 2.0.0
+  * [fcb99b3a] Do not use multi-arch path for the daemon
+  * [45d8379b] debian/changelog: Fix D-Bus capitalization
+  * [32fb9c09] debian/control: Drop Recommends for geoclue package
+  * [dd7a3e09] Disable server side binaries for now
+  * [e4186f23] Run the service under the "geoclue" user
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.12.99-3) unstable; urgency=low
+
+  * [cf5a5bd4] debian/control: Add Multi-Arch: same for libgeoclue0 package
+  * [df11e930] debian/control: Use canonical URL for the Vcs-* fields
+  * [b6eda579] Always update autotools helper files during build
+  * [52761c89] debian/gbp.conf: Set tarball-dir and export-dir
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.12.99-2) unstable; urgency=low
+
+  * [3d2d3dbf] Adopt the package with Bernd blessing
+  * [f2270121] Bump Standards-Version to 3.9.4 (no further changes)
+  * [24cec588] Update the debian/watch file.
+    Thanks to Bart Martens <bartm@debian.org>
+  * [bc11de4e] Recommends geoclue-nominatim instead of geoclue-yahoo
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.12.99-1) experimental; urgency=low
+
+  * [feec9810] Switch to experimental branches
+  * [187e0e61] Imported Upstream version 0.12.99
+  * [754f839d] Adjust the build-dependencies
+  * [b9d05053] Bump debhelper compatibility to 9
+  * [48a66a0d] Install geoclue GSettings schemas
+  * [68c959ca] Drop usage of quilt and autotools-dev
+  * [23e47b77] Bump Standards-Version to 3.9.3 (no further changes)
+  * [6f068365] Drop all the patches applied upstream
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.12.0-4) unstable; urgency=low
+
+  [ Laurent Bigonville ]
+  * [a5d605f9] Bump Standards-Version to 3.9.2 (no further changes)
+  * [e17fbb8f] Add geoclue-nominatim provider
+
+  [ Bernd Zeimetz ]
+  * [6d14937a] Remove gpsd support.
+    geoclue seems to be dead upstream and the gpsd provider needs a rewrite.
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.12.0-3) unstable; urgency=low
+
+  [ Evgeni Golov ]
+  * [b29d4e1f] add Provides: geoclue-provider to every provider
+    that makes it possible to depend on "any provider the user wants"
+  * [c78bdd10] don't fetch priv if it's not used, makes gcc-4.6 silent
+    new patch: gcc-4.6-werror.patch (closes: #625340)
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.12.0-2) unstable; urgency=low
+
+  [ Bernd Zeimetz ]
+  * [2b4a976e] Fix description of localnet provider.
+  * [bed74bfa] Don't depend on network-manager-dev on hurd. (Closes: #589556)
+
+  [ Laurent Bigonville ]
+  * [73b9d0c0] Do not install .la file anymore (Closes: #586089).
+  * [18402b0a] Fix typo in plazes.com URL (Closes: #584460)
+  * [38d50a05] Make geoclue master package Recommends some backends
+    (Closes: #602833)
+  * [e2562e3e] Wrap {build-}dependencies
+  * [f26f5c75] Add skyhook geocoding backend
+  * [d5e3fb94] Bump Standards-Version to 3.9.1
+  * [8f0bdbda] geoclue-manual shouldn't be in doc section
+  * [fc1af9da] Switch to dpkg-source 3.0 (quilt) format
+  * [2e38ec8c] Use dh_autotools-dev instead of updating
+    config.{sub,guess} manually
+  * [70fa94bd] Build-dep against libnm-glib-dev on linux-any arch
+  * [106e7914] debian/patches/libnm-glib-pc.patch: Fix libnm-glib.pc
+    name
+  * [732f3e4d] debian/patches/autoreconf.patch: Update configure file
+  * [aacbbc7d] debian/rules: Be sure we FTBFS if we miss something
+  * [c2553245] Drop debian/clean, not needed anymore
+  * [db7e1b26] debian/rules: Be sure we never build with connman support
+  * [da40b0c4] Add myself as uploader
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.12.0-1) unstable; urgency=low
+
+  * [e52a1858] Add ofono-dev as build-dependency.
+  * [f3a4f817] Replace gammu by ofono in the description.
+  * [7fc55dc5] Drop libgammu-dev build-dep.
+  * [1346e6d5] Imported Upstream version 0.12.0 (Closes: #575816)
+  * [224b42d3] Updating patches.
+  * [bee64eb7] Updating symbols file.
+  * [8cb5a919] Reorder dh optionts as specified by the manpage.
+  * [2c8aa421] Switching Maintainer/Uploaders.
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.11.1+git20091217-3) unstable; urgency=low
+
+  * [73b81920] Require libgps >= 2.90.1~svn6819 to build. This fixes the
+    ftbfs on mipsel.
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.11.1+git20091217-2) unstable; urgency=low
+
+  * [6b0622fc] Don't require network-manager-dev on kfreebsd.
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.11.1+git20091217-1) unstable; urgency=low
+
+  * Building from the upstream git directly as there was no release
+    for months now.
+  * Fixing a build issue with the new libgps, requires libgps >= 2.91
+    now as we rely on the non-blocking features of gps_poll.
+    Closes: #560519
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.11.1-6) unstable; urgency=low
+
+  * [b5dc4a22] Cleaning up git buildpackage config.
+  * [e2dd0d25] Bump compat to level 7.
+  * [59e22383] Merge branch 'dh'
+  * [80f5bd5a] Adding debian/clean for dh_clean, drop extra rules.
+  * [2fa2135d] Copy config.guess/sub and clean up after build.
+  * [0d7df15a] Adding patch to fix wrong comment syntax in example code.
+    (Closes: #536269) - thanks to Marco Túlio Gontijo e Silva
+  * [aa3f625c] Fix HostIP provider to work with latest web API (Closes:
+    #554178) - thanks to Jonny Lamb
+  * [773831aa] Use dh_quilt_* in debian/rules.
+  * [47ecb429] Bumping Standards-Version to 3.8.3, no changes needed.
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.11.1-5) unstable; urgency=low
+
+  * [ff19d3bf] Fixing section override disparities.
+  * [23ddf112] Use libglib2.0-dev instead of libglib-dev. (Closes:
+    #535940) - thanks to Laurent Bigonville
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.11.1-4) unstable; urgency=low
+
+  * [dcb98403] Move geoclue-test-gui into geoclue-examples. (Closes:
+    #534250) - thanks to Laurent Bigonville
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.11.1-3) unstable; urgency=low
+
+  * [a95b9e89] Fixing typo in the last changelog entry.
+  * [24b3c980] Build geoclue with network-manager support. (Closes:
+    #532234) - thanks to Guillaume Desmottes
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.11.1-2) unstable; urgency=low
+
+  [ Craig Andrews ]
+  * Fix warnings reported by lintian
+  * Resolve circular dependency between geoclue and libgeoclue0
+    (Closes: #520129). libgeoclue no longer depends on geoclue.
+    libgeoclue instead suggests geoclue.
+  * Changed --libexecdir to point to /usr/lib/geoclue.
+    (Closes: #518822).
+  * Use cdbs (Thanks Stefan Jenkner <stefan@jenkner.org>)
+  * Added debian/watch for update detection
+  * Thanks Bernd Zeimetz <bzed@debian.org> for the previous NMU
+    (Closes: #518586)
+  * Install examples as examples in the libgeoclue-dev package
+
+  [ Bernd Zeimetz ]
+  * Adding myself to Uploaders.
+  * Bumping Standards-Version to 3.8.1, no changes needed.
+  * Add dependency on geoclue for location providers where
+    it was missing.
+  * Raise build-dependency on libgammu-dev to >= 1.24.0 as
+    we're applying a patch which needs the API change.
+  * Update Vcs information to point to git.debian.org.
+  * Add debian/gbp.conf to make sure we use pristine-tar.
+  * Only install *.c and the Makefile as examples, not the
+    pre-built .o files and linker scripts.
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.11.1-1.1) unstable; urgency=low
+
+  * Non-maintainer upload.
+  * Adding quilt patch system and a patch to fix a FTBFS due to a changed
+    API of libgammu (Closes: #518586). Also adding debian/README.source
+    as required by policy.
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.11.1-1) unstable; urgency=low
+
+  * New upstream version (stable)
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.8svn20070820-1) unstable; urgency=low
+
+  * New upstream version from git
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.8svn20070815-1) unstable; urgency=low
+
+  * New upstream version from git
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.2svn20070715-1) unstable; urgency=low
+
+  * New upstream version from git
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
+geoclue (0.2svn20070704-1) unstable; urgency=low
+
+  * Initial release
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800

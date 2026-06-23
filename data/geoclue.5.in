@@ -1,0 +1,250 @@
+.TH "GEOCLUE CONFIGURATION" 5
+.SH NAME
+geoclue.conf
+\-
+geoclue configuration parameters
+.SH SYNOPSIS
+Main configuration file: @sysconfdir@/geoclue/geoclue.conf
+.br
+Overwriting parameters files: @sysconfdir@/geoclue/conf.d
+.SH DESCRIPTION
+.ad
+.fi
+The main GeoClue configuration file 'geoclue.conf' specifies parameters
+that control the operation of geoclue. Parameters can be overwritten by
+placing configuration files in conf.d directory and applied in alphabetic
+order. Thus, a configuration file '90-config.conf' will overwrite parameters
+specified in another configuration file '50-config.conf' in the conf.d
+directory.
+.PP
+All configurations settings below are mandatory and the defaults are
+what you see before you edit them in geoclue.conf. If you want to keep the default
+values around, copy and comment out the appropriate line(s) before
+changing them.
+.PP
+Missing 'enable' key for a particular source in the main configuration file
+causes that source to be enabled by default. Adding 'enable' key setting
+to any further config file can overwrite this default.
+.SH AGENT CONFIGURATION OPTIONS
+.B \fI[agent]
+is used to begin the agent configuration.
+.IP \fBwhitelist
+.br
+Whitelist of desktop IDs (without .desktop part) of all agents we recognise,
+separated by a ';'.
+.IP
+.B whitelist=geoclue-demo-agent;gnome-shell;io.elementary.desktop.agent-geoclue2
+.br
+.IP \fB[network-nmea]
+.br
+Network NMEA source configuration options
+.IP
+.B \fBenable=true
+.br
+Fetch location from NMEA sources on local network?
+.br
+.IP
+.B \fBnmea-socket=/var/run/gps-share.sock
+.br
+Use a nmea unix socket as the data source.
+If not set, unix socket will not be used.
+.br
+.IP \fB[3g]
+.br
+3G source configuration options
+.IP
+.B \fBenable=true
+.br
+Enable 3G source
+.br
+.IP \fB[cdma]
+.br
+CDMA source configuration options
+.IP
+.B \fBenable=true
+.br
+Enable CDMA source
+.br
+.IP \fB[modem-gps]
+.br
+Modem GPS source configuration options
+.IP
+.B \fBenable=true
+.br
+Enable Modem-GPS source
+.br
+.IP \fB[wifi]
+.br
+WiFi source configuration options
+.IP
+.B \fBenable=true
+.br
+Enable WiFi source
+.IP
+.B url=\fIhttps://location.services.mozilla.com/v1/geolocate?key=YOUR_KEY
+.br
+URL to the WiFi geolocation service. If not set, defaults to Mozilla's
+Location Service with a hardcoded key. To use a custom key, uncomment this URL
+while changing YOUR_KEY to your MLS API key.
+.IP
+.B submit-data=false
+Submit data to Mozilla Location Service
+.br
+If set to true, geoclue will automatically submit network data to Mozilla
+each time it gets a GPS lock.
+.IP
+.B submission-url=\fIhttps://location.services.mozilla.com/v2/geosubmit?key=YOUR_KEY
+.br
+URL to submission API of Mozilla Location Service
+.IP
+.B submission-nick=geoclue
+.br
+A nickname to submit network data with. If empty, omitted from the submission. Otherwise, must be 2 to 32 characters long. Defaults to "geoclue".
+.br
+.IP \fB[compass]
+.br
+Compass configuration options
+.IP
+.B \fBenable=true
+.br
+Enable Compass
+.br
+.IP \fB[static-source]
+.br
+Static source configuration options.
+.br
+This source reads location from "geolocation" file in @sysconfdir@. While this file is constantly monitored for changes during geoclue operation, and the reported static location is updated accordingly, this source isn't meant for inputting a dynamically changing location to geoclue (please use the Network NMEA source for that).
+.IP
+.B \fBenable=true
+.br
+Enable the static source.
+.br
+If you make use of this source, you probably should disable other location
+sources in geoclue.conf so they won't override the configured static location.
+.br
+.SH APPLICATION CONFIGURATION OPTIONS
+Having an entry here for an application with
+.B allowed=true
+means that geoclue will not ask agent to authorize the application. This is to
+ensure that applications with built-in authorization mechanism (e.g web
+browsers) do not have to be bound to agents.
+.PP
+If your application is denied access to location information and your
+operating system doesn't provide any mechanism to change that, it is
+likely a bug in your operation system (or geoclue). The solution is to
+report the issue with all details, rather than adding your application
+to this list.
+.IP Format:
+.RS
+.B [random-app]
+.br
+Desktop ID of application without .desktop part
+.PP
+.B allowed=true|false
+.br
+Allowed access to location information?
+.PP
+.B system=true|false
+.br
+Is application a system component?
+.PP
+.B users=
+.br
+List of UIDs of all users for which this application is allowed location
+info access, separate by ';'. Keep it empty for allowing it for all users.
+.RE
+.IP Examples:
+.RS
+.B [gnome-datetime-panel]
+.br
+allowed=true
+.br
+system=true
+.br
+users=
+.PP
+.B [gnome-color-panel]
+.br
+allowed=true
+.br
+system=true
+.br
+users=
+.PP
+.B [org.gnome.Shell]
+.br
+allowed=true
+.br
+system=true
+.br
+users=
+.PP
+.B [io.elementary.desktop.agent-geoclue2]
+.br
+allowed=true
+.br
+system=true
+.br
+users=
+.PP
+.B [epiphany]
+.br
+allowed=true
+.br
+system=false
+.br
+users=
+.PP
+.B [firefox]
+.br
+allowed=true
+.br
+system=false
+.br
+users=
+.br
+.SH STATIC LOCATION FILE
+.SS Basic format:
+The static location file in @sysconfdir@ (used by the static source) is a text file consisting of the following:
+.nr step 1 1
+.IP \n[step]
+Latitude (floating point number; positive values mean north, negative south)
+.IP \n+[step]
+Longitude (floating point number; positive values mean east, negative west)
+.IP \n+[step]
+Altitude (floating point number; in meters)
+.IP \n+[step]
+Accuracy radius (floating point number; in meters)
+.RE
+.PP
+These values need to be separated by newline characters.
+.SS Additional format information:
+.IP \[bu]
+The '\[sh]' character starts a comment, which continues until the end of the current line.
+.IP \[bu]
+Leading and trailing white-space on each line is ignored.
+.IP \[bu]
+Empty lines (or containing just white-space or a comment) are ignored.
+.SS Example:
+.EX
+# Example static location file for a machine inside Statue of Liberty torch
+
+40.6893129   # latitude
+-74.0445531  # longitude
+96           # altitude
+1.83         # accuracy radius (the diameter of the torch is 12 feet)
+.EE
+.SS Notes:
+For extra security, the static location file can be made readable just by the geoclue user:
+.EX
+# chown @dbus_srv_user@ @sysconfdir@/geolocation
+# chmod 600 @sysconfdir@/geolocation
+.EE
+.br
+.SH CLIENT LIST
+Sending SIGUSR1 to a running geoclue process prints the current list of clients to the log.
+.br
+.SH AUTHOR
+.na
+.nf
+Sachin Chand
