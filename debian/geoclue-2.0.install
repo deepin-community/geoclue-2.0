@@ -1,7 +1,6 @@
 #!/usr/bin/dh-exec
 debian/local/usr.libexec.geoclue etc/apparmor.d/
 etc/geoclue/
-etc/xdg/autostart/geoclue-demo-agent.desktop
 usr/lib/systemd/system/
 usr/lib/*/pkgconfig/geoclue-2.0.pc
 usr/libexec/geoclue-2.0/demos/agent
