@@ -1,3 +1,10 @@
+geoclue-2.0 (2.7.2-2deepin1) unstable; urgency=medium
+
+  * del autostart desktop.
+  * Remove autostart desktop from install file to match the meson patch.
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 23 Jun 2026 10:00:00 +0800
+
 geoclue-2.0 (2.7.2-2) unstable; urgency=medium
 
   * debian/control: Add Provides: ${gir:Provides} for the -dev package
