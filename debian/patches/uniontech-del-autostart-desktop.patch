@@ -1,0 +1,15 @@
+Index: deepin-geoclue-2.0/demo/meson.build
+===================================================================
+--- deepin-geoclue-2.0.orig/demo/meson.build	2025-05-16 10:24:56.004979452 +0800
++++ deepin-geoclue-2.0/demo/meson.build	2025-05-16 10:55:28.139235204 +0800
+@@ -52,10 +52,4 @@
+                                    po_dir: '../po',
+                                    install: true,
+                                    install_dir: desktop_dir)
+-
+-    # Also install in the autostart directory.
+-    autostart_dir = join_paths(sysconfdir, 'xdg', 'autostart')
+-    meson.add_install_script('install-file.py',
+-                             desktop_file.full_path(),
+-                             autostart_dir)
+ endif
